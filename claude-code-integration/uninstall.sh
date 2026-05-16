@@ -58,6 +58,9 @@ if [[ -f "$SETTINGS_FILE" ]]; then
         (($binPath | length > 0) and contains($binPath))
       );
     del(._claude_mem_installed) |
+    # v0.4.2: remove both current and legacy MCP server keys
+    del(.mcpServers["tencentdb-memory"]) |
+    del(.mcpServers["claude-mem"]) |
     .hooks = (
       (.hooks // {}) |
       to_entries |

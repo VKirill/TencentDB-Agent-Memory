@@ -156,10 +156,10 @@ Claude Code can call these tools mid-conversation:
 
 | Tool | What it does |
 |---|---|
-| `mcp__claude-mem__memory_search` | Search L1 facts by semantic similarity (Voyage vector) or keyword fallback. Returns top-K matches. |
-| `mcp__claude-mem__conversation_search` | Keyword search over raw L0 turns. Use to find verbatim past exchanges. |
-| `mcp__claude-mem__recall_persona` | Return the full current persona.md content. |
-| `mcp__claude-mem__recall_scenes` | List all scene blocks with filenames + summaries. |
+| `mcp__tencentdb-memory__memory_search` | Search L1 facts by semantic similarity (Voyage vector) or keyword fallback. Returns top-K matches. |
+| `mcp__tencentdb-memory__conversation_search` | Keyword search over raw L0 turns. Use to find verbatim past exchanges. |
+| `mcp__tencentdb-memory__recall_persona` | Return the full current persona.md content. |
+| `mcp__tencentdb-memory__recall_scenes` | List all scene blocks with filenames + summaries. |
 
 The `MEMORY_TOOLS_GUIDE` (injected into Claude's system context on every
 session) instructs the agent to call these tools at most 3 times per turn,
