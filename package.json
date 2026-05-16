@@ -1,6 +1,6 @@
 {
   "name": "@vkirill/tencentdb-agent-memory",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Four-layer local memory (L0→L1→L2→L3) for Claude Code and other agents — SQLite vector search + OpenAI-compatible LLM/embedding providers. Forked from Tencent/TencentDB-Agent-Memory.",
   "type": "module",
   "main": "./dist/index.mjs",
@@ -20,6 +20,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run tests/integration",
+    "smoke:hy3": "node scripts/smoke-hy3.mjs",
     "lint:gate": "bash scripts/check-no-openclaw.sh"
   },
   "files": [

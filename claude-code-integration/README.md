@@ -84,6 +84,44 @@ cat ~/.claude/memory/.../memory.log   # internal log
 ls .claude/memory/conversations/      # date-bucketed JSONL files
 ```
 
+## Auto-extract scheduler (v0.3.1+)
+
+The `claude-mem extract` command builds L1 facts from L0 turns via the LLM. To run it automatically every 30 min across multiple projects, opt in to the PM2-supervised scheduler:
+
+```bash
+# 1. Add projects to allowlist (one absolute path per line; # comments allowed)
+$EDITOR ~/.claude/claude-mem-projects.txt
+#   /home/you/projects/my-app
+#   /home/you/projects/other-service
+
+# 2. Start the daemon (install.sh prints the exact command)
+pm2 start ~/.claude/hooks/claude-mem/scheduler.cjs --name claude-mem-scheduler
+pm2 save                              # survive reboots
+
+# 3. Monitor
+pm2 logs claude-mem-scheduler         # live tail
+pm2 list                              # status snapshot
+cat <project>/.claude/memory/scheduler.log   # per-project history
+```
+
+**Behavior:**
+- **Ticks every `CLAUDE_MEM_INTERVAL_MIN` minutes** (default 30). Override via PM2 env: `pm2 set claude-mem-scheduler:CLAUDE_MEM_INTERVAL_MIN 60` then restart.
+- **Serial — never parallel.** Avoids LLM rate-limit storms when 10+ projects extract back-to-back.
+- **Per-project lock** at `<project>/.claude/memory/.extract.lock` prevents the scheduler colliding with itself if a tick over-runs. Stale locks (dead PID or age > 10 min) auto-reclaim.
+- **5-min hard timeout per project** (env `CLAUDE_MEM_EXTRACT_TIMEOUT_MS`). If `claude-mem extract` stalls on a slow LLM, scheduler kills it and moves on.
+- **Hot-reloads the allowlist on every tick** — edit the file, next tick picks it up without PM2 restart.
+- **Graceful SIGTERM** — finishes current project's extract, exits within 60 s.
+
+**Stop:**
+```bash
+pm2 delete claude-mem-scheduler
+pm2 save
+```
+
+**Cost (Hy3 free tier baseline):** ~$0/month for a handful of projects on the OpenRouter free tier. Sonnet 4.6 fallback (if Hy3 fails the smoke gate): ~$0.30/project/month at 30-min cadence. See `CHANGELOG.md [0.3.1]` for the smoke-test rate measured at release.
+
+---
+
 ## Disable / uninstall
 
 ```bash

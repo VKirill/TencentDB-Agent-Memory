@@ -10,6 +10,9 @@ workspace/
 # Test caches
 __tests__/soak/.model-cache/
 
+# v0.3.1: smoke-hy3 reports (per-run, not source-controlled)
+tests/output/
+
 # Python cache
 __pycache__/
 *.pyc

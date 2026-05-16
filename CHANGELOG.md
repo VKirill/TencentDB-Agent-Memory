@@ -9,6 +9,73 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.3.1] — 2026-05-16
+
+PM2 auto-extract scheduler + 20-prompt Hy3 reliability gate.
+
+### Added
+- **PM2 scheduler** (`claude-code-integration/scheduler.cjs`): ticks every
+  `CLAUDE_MEM_INTERVAL_MIN` minutes (default 30), reads
+  `~/.claude/claude-mem-projects.txt` allowlist with hot-reload, spawns
+  `claude-mem extract` serially per project with `cwd: <projectPath>`,
+  5-min hard kill timer, per-project lockfile with stale reclaim
+  (dead PID or age >10min), graceful SIGTERM drain ≤60s. Node stdlib only.
+- **Scheduler unit tests** via `node --test` (6 cases — parseAllowlist,
+  acquireLock fresh/held/stale, releaseLock idempotent).
+- **Allowlist template** (`claude-code-integration/templates/claude-mem-projects.txt.example`).
+- **20-prompt Hy3 reliability smoke** (`scripts/smoke-hy3.mjs`): 20 PII-free
+  fixture turns through real OpenRouter Hy3, valid-JSON shape check,
+  writes report to `tests/output/hy3-smoke-report.json`, exits 1 if
+  rate <80%.
+- **`npm run smoke:hy3`** script (CI-safe: skipped without `OPENROUTER_API_KEY`).
+- `tests/output/` in `.gitignore`.
+
+### Changed
+- **install.sh v0.3.1 block**: copies scheduler.cjs to
+  `~/.claude/hooks/claude-mem/scheduler.cjs` (0755), creates empty
+  `~/.claude/claude-mem-projects.txt` (0644) from template if absent,
+  detects PM2 → prints exact `pm2 start … --name claude-mem-scheduler`
+  command OR PM2 install instructions. Opt-in; does NOT auto-start.
+- **uninstall.sh**: warns user about running PM2 process; preserves allowlist.
+- **index.ts** re-exports `EXTRACT_MEMORIES_SYSTEM_PROMPT` and
+  `formatExtractionPrompt` (smoke script imports from `dist/` for single
+  source of truth — codex round 1 P1 fix).
+
+### Verified
+- **Real Hy3 20-prompt smoke**: 16/20 valid = **80.0%** (exactly on gate).
+  4 failures all `JSON.parse: Unexpected end of JSON input` — Hy3 truncated
+  mid-output on longer prompts. Latency p50=21.9s, p95=43.3s. R1 fallback
+  NOT activated. Total 6.5 min wall-clock, ~$0 (Hy3 free tier).
+  **Open observation for v0.3.2:** truncation pattern suggests max_tokens
+  bump or retry-on-truncation worth considering.
+- **Scheduler E2E** (programmatic `runOnce`): 3 allowlist entries (2 real
+  + 1 non-existent + 1 relative-skipped) → 2 OK + 1 WARN-skip. Per-project
+  `scheduler.log` written with ISO timestamps. cwd propagation verified.
+- **Install fresh tmp HOME**: scheduler.cjs (0755), allowlist (0644) with
+  template content, PM2 hint with full absolute path.
+
+### Codex review
+- 2 SPEC review rounds, 5 findings (2 P1 + 3 P2), all resolved before
+  implementation. See `docs/plans/v0.3.1-scheduler-and-smoke/SPEC.md §9`.
+
+### Deferred
+- v0.3.2: vector recall via `TdaiCore.handleBeforeRecall`
+- v0.3.3: L2 scene blocks + L3 persona generation
+- Hy3 truncation retry mitigation (observed in v0.3.1 smoke)
+
+### Migration from v0.3.0
+```bash
+cd /path/to/TencentDB-Agent-Memory
+git pull && npm install --ignore-scripts && npm run build
+bash claude-code-integration/install.sh
+# install.sh now creates ~/.claude/claude-mem-projects.txt + scheduler.cjs
+echo "$HOME/projects/my-app" >> ~/.claude/claude-mem-projects.txt
+pm2 start ~/.claude/hooks/claude-mem/scheduler.cjs --name claude-mem-scheduler
+pm2 save
+```
+
+---
+
 ## [0.3.0] — 2026-05-16
 
 LLM pipeline activation (Phase A). `claude-mem extract` now manually
