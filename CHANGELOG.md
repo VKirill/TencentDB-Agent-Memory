@@ -9,6 +9,45 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.2.0] — 2026-05-16
+
+Claude Code integration: global install, per-project memory, auto-init on first use.
+
+### Added
+- `ClaudeCodeHostAdapter` + `ClaudeCodeLLMRunnerFactory` in `src/adapters/claude-code/`
+- Global `--auto-init` and `--platform <name>` CLI flags
+- `loadContextOrAutoInit()` helper — silent bootstrap of `.claude/memory/` on first use
+- `claude-code-integration/install.sh` — global, idempotent installer for
+  `~/.claude/settings.json` hooks + 3 wrappers to `~/.claude/hooks/claude-mem/`
+- `claude-code-integration/uninstall.sh` — clean removal (preserves per-project data)
+- 3 hook wrappers translating Claude Code envelope shapes → claude-mem stdin:
+  `recall-wrapper.sh`, `capture-wrapper.sh` (backgrounded), `stop-wrapper.sh`
+- `settings.json.template`, `.env.example`, integration README (~140 lines)
+- `package.json files[]` now includes `claude-code-integration/`
+- `runInit` accepts `silent?: boolean`
+
+### Deferred to v0.3
+- Hy3 JSON-reliability smoke test (WP3.6) — v0.2 CLI never calls LLM at runtime
+- Vector recall via `TdaiCore.handleBeforeRecall` (ClaudeCodeHostAdapter
+  plumbed but not exercised in v0.2 — v0.2 recall is keyword-only)
+- install.sh vitest integration tests (manual E2E verified instead)
+- Migration from claude-mem v12.7.5
+- MCP server variant
+- npm publish
+
+### Manual E2E (verified 2026-05-16)
+- `npm link` → `claude-mem --version` = 0.2.0
+- `bash install.sh` in tmp HOME → 4 hooks in settings.json + 3 wrappers, marker set
+- Simulated Claude Code hook payloads → wrappers → L0 turns written;
+  recall finds matching content; stats reports counts
+- `uninstall.sh` round-trip cleanly removes everything install added
+
+### Codex review
+- `/codex:review` on v0.2 SPEC: 2 rounds, 5 findings (3 P1, 2 P2),
+  all resolved in SPEC before implementation. See SPEC §10.
+
+---
+
 ## [0.1.0] — 2026-05-16
 
 Initial fork from upstream `v0.3.4`.
