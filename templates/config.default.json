@@ -1,0 +1,49 @@
+{
+  "_comment": "Default config for @vkirill/tencentdb-agent-memory. API keys come from env (OPENROUTER_API_KEY, VOYAGE_API_KEY) — never stored here. See claude-mem README for env wiring.",
+  "storeBackend": "sqlite",
+  "capture": {
+    "l0l1RetentionDays": 0,
+    "allowAggressiveCleanup": false
+  },
+  "extraction": {
+    "enableDedup": true,
+    "maxMemoriesPerSession": 20,
+    "model": "tencent/hy3-preview"
+  },
+  "persona": {
+    "triggerEveryN": 50,
+    "maxScenes": 20,
+    "backupCount": 3,
+    "sceneBackupCount": 10,
+    "model": "tencent/hy3-preview"
+  },
+  "pipeline": {
+    "everyNConversations": 0,
+    "enableWarmup": true,
+    "l1IdleTimeoutSeconds": 60,
+    "l2DelayAfterL1Seconds": 30,
+    "l2MinIntervalSeconds": 120,
+    "l2MaxIntervalSeconds": 3600,
+    "sessionActiveWindowHours": 24
+  },
+  "recall": {
+    "topK": 5
+  },
+  "embedding": {
+    "provider": "voyage",
+    "baseUrl": "https://api.voyageai.com/v1",
+    "apiKey": "",
+    "model": "voyage-3-lite",
+    "dimensions": 512,
+    "timeoutMs": 10000,
+    "captureTimeoutMs": 5000,
+    "conflictRecallTopK": 5
+  },
+  "llm": {
+    "enabled": true,
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "apiKey": "",
+    "model": "tencent/hy3-preview",
+    "_R1_fallback_comment": "If Hy3 smoke test (v0.2 WP3.6) shows <95% valid-JSON rate, switch to: \"model\": \"anthropic/claude-sonnet-4.6\" for L0→L1 only; keep Hy3 for L2/L3 via per-stage model override."
+  }
+}

@@ -43,14 +43,27 @@ function writeMinimalConfig(projectRoot: string): string {
 }
 
 describe("loadContext", () => {
-  let originalEnv: NodeJS.ProcessEnv;
+  // Track keys added during a test so afterEach can remove them without
+  // replacing the process.env reference (upstream env.ts caches the
+  // reference at module load — replacing the object would orphan the cache).
+  const KEYS_UNDER_TEST = ["OPENROUTER_API_KEY", "VOYAGE_API_KEY"];
+  const originalValues: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    originalEnv = { ...process.env };
+    for (const k of KEYS_UNDER_TEST) {
+      originalValues[k] = process.env[k];
+      delete process.env[k];
+    }
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    for (const k of KEYS_UNDER_TEST) {
+      if (originalValues[k] === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = originalValues[k];
+      }
+    }
     vi.restoreAllMocks();
   });
 

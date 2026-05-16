@@ -1,0 +1,132 @@
+/**
+ * ClaudeCliContext — host-neutral CLI context object.
+ *
+ * Constructed by `loadContext()` from a project's `.claude/memory/config.json`.
+ * Consumed by every claude-mem subcommand (init/capture/recall/stats).
+ *
+ * Logger writes only to `<stateDir>/memory.log` — never to stdout —
+ * because claude-mem is invoked from Claude Code hooks and stdout is
+ * reserved for content the agent should see (e.g. recall output).
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import type { MemoryTdaiConfig } from "../config.js";
+import { parseConfig } from "../config.js";
+import { getEnv } from "../utils/env.js";
+
+export interface CliLogger {
+  debug?: (message: string) => void;
+  info: (message: string) => void;
+  warn: (message: string) => void;
+  error: (message: string) => void;
+}
+
+export interface ClaudeCliContext {
+  /** Fully resolved memory-tdai config (parseConfig result + env merge). */
+  config: MemoryTdaiConfig;
+  /** Project state dir — `<projectRoot>/.claude/memory`. */
+  stateDir: string;
+  /** Data dir for SQLite + JSONL (same as stateDir in v0.1). */
+  dataDir: string;
+  /** File-only logger, writes to `<stateDir>/memory.log`. */
+  logger: CliLogger;
+}
+
+export interface LoadContextOptions {
+  /** Project root — typically `process.cwd()`. `.claude/memory/` is expected here. */
+  projectRoot: string;
+}
+
+const STATE_SUBDIR = path.join(".claude", "memory");
+const CONFIG_FILE = "config.json";
+const LOG_FILE = "memory.log";
+
+/**
+ * Load and resolve a ClaudeCliContext for the given project root.
+ *
+ * Steps:
+ *   1. Read `.claude/memory/config.json` (throws if missing).
+ *   2. Parse via `parseConfig()` → `MemoryTdaiConfig`.
+ *   3. Merge env vars `OPENROUTER_API_KEY` → `config.llm.apiKey`,
+ *      `VOYAGE_API_KEY` → `config.embedding.apiKey`. Env wins over file
+ *      (file should never contain secrets; init writes empty `apiKey`).
+ *   4. Construct a file-only logger writing to `memory.log`.
+ *
+ * Throws on missing config. All other failures (env unset, write failure)
+ * are non-fatal and surface as logger warnings — the caller is responsible
+ * for the `exit 0` discipline expected by hooks.
+ */
+export async function loadContext(opts: LoadContextOptions): Promise<ClaudeCliContext> {
+  const stateDir = path.join(opts.projectRoot, STATE_SUBDIR);
+  const configPath = path.join(stateDir, CONFIG_FILE);
+
+  if (!fs.existsSync(configPath)) {
+    throw new Error(
+      `claude-mem: config.json not found at ${configPath}. ` +
+      `Run 'claude-mem init' in this directory first.`,
+    );
+  }
+
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch (err) {
+    throw new Error(
+      `claude-mem: failed to parse ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const config = parseConfig(raw);
+
+  // ── Env-var merge (secrets never live in config.json) ────────────────
+  const openrouterKey = getEnv("OPENROUTER_API_KEY");
+  if (openrouterKey) {
+    config.llm.apiKey = openrouterKey;
+  }
+  const voyageKey = getEnv("VOYAGE_API_KEY");
+  if (voyageKey) {
+    config.embedding.apiKey = voyageKey;
+  }
+
+  // ── Logger: file-only, hook-friendly ─────────────────────────────────
+  const logPath = path.join(stateDir, LOG_FILE);
+  const logger = createFileLogger(logPath);
+
+  return {
+    config,
+    stateDir,
+    dataDir: stateDir,
+    logger,
+  };
+}
+
+function createFileLogger(logPath: string): CliLogger {
+  // Ensure parent dir exists; if it can't, fall back to a no-op logger
+  // (don't throw — hook stdout discipline trumps log fidelity).
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  } catch {
+    return {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
+  }
+
+  const write = (level: string, message: string) => {
+    const line = `${new Date().toISOString()} [${level}] ${message}\n`;
+    try {
+      fs.appendFileSync(logPath, line);
+    } catch {
+      // Swallow — hooks must never crash on log-write failure.
+    }
+  };
+
+  return {
+    debug: (msg) => write("debug", msg),
+    info: (msg) => write("info", msg),
+    warn: (msg) => write("warn", msg),
+    error: (msg) => write("error", msg),
+  };
+}
