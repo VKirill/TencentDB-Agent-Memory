@@ -9,6 +9,32 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.2.2] — 2026-05-16
+
+Cosmetic patch — readable summaries in recall output.
+
+### Fixed
+- **Nested role-label collision** in stop-wrapper output. v0.2.1
+  formatted inner turns as `"user: text"` / `"assistant: text"`. recall.ts
+  then wraps the L0 message in its own `"user: …\nassistant: …"` frame,
+  producing `"assistant: user: …"` and `"assistant: assistant: …"` in
+  injected context — readable but visually confusing.
+- v0.2.2 uses `«U»` / `«A»` marker prefixes inside summary content.
+  Recall wrap still adds `assistant:` outer label, so output reads as:
+  ```
+  user: session-end
+  assistant: «U» Как починить useEffect?
+              «A» useEffect требует массив зависимостей.
+              «A» Готово, обновил компонент.
+  ```
+  Distinct visual layer for outer (recall frame) vs inner (turn structure).
+
+### Unchanged
+- All v0.2.1 fixes preserved (JSONL parse, dropped PostToolUse,
+  dynamic version read).
+
+---
+
 ## [0.2.1] — 2026-05-16
 
 Hotfix: memory quality. v0.2.0 stored unusable garbage in long-term memory.
