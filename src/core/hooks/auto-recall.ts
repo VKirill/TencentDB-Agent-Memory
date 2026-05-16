@@ -28,18 +28,18 @@ const TAG = "[memory-tdai] [recall]";
  * main agent knows how to actively retrieve deeper information.
  */
 const MEMORY_TOOLS_GUIDE = `<memory-tools-guide>
-## 记忆工具调用指南
+## Memory tool usage guide
 
-当上方注入的记忆片段不足以回答用户问题时，可主动调用以下工具获取更多信息：
+If the memory fragments injected above are not enough to answer the user's question, you may proactively call the following tools to fetch more info:
 
-- **tdai_memory_search**：搜索结构化记忆（L1），适用于回忆用户偏好、历史事件节点、规则等关键信息。
-- **tdai_conversation_search**：搜索原始对话（L0），适用于查找具体消息原文、时间线、上下文细节；也可用于补充或校验 memory_search 的结果。
-- **read_file**（Scene Navigation 中的路径）：当已定位到相关情境，且需要该场景的完整画像、事件经过或阶段结论时使用。
+- **tdai_memory_search**: searches the structured memory (L1). Use for recalling user preferences, key events, rules, and other distilled info.
+- **tdai_conversation_search**: searches the raw conversation (L0). Use to find verbatim message text, timelines, contextual detail; also useful to supplement or verify memory_search results.
+- **read_file** (path from Scene Navigation): use once you've identified the relevant scene and need its full narrative, event flow, or stage conclusions.
 
-### ⚠️ 调用次数限制
-每轮对话中，tdai_memory_search 和 tdai_conversation_search **合计最多调用 3 次**。
-- 首次搜索无结果时，可换关键词或换工具重试，但总调用次数不要超过 3 次。
-- 若 3 次搜索后仍无结果，说明该信息不在记忆中，请直接根据已有信息回复用户，不要继续搜索。
+### ⚠️ Call-count limit
+Per conversation turn, tdai_memory_search and tdai_conversation_search may be called **at most 3 times combined**.
+- If the first search returns nothing, try different keywords or a different tool — but stay within 3 total calls.
+- If after 3 searches you still have nothing, the info is not in memory. Reply to the user based on what you already have and stop searching.
 </memory-tools-guide>`
 
 interface Logger {

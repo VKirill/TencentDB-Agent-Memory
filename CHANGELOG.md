@@ -9,6 +9,96 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.3.4] — 2026-05-16
+
+Full English localization of the four LLM prompts (L1 extraction, L1 dedup,
+L2 scene extraction, L3 persona generation) and all user-visible auxiliary
+strings. The Tencent upstream prompts were entirely in Chinese; this fork
+release rewrites them in English while preserving every rule, decision
+tree, JSON schema, and template structure unchanged.
+
+### Why
+Previous releases (≤0.3.3) produced Chinese output (persona.md filenames
+and content in Chinese, scene_blocks/\*.md with Chinese titles) because
+the LLM mirrors its prompt language. For English-speaking deployments
+this made the generated memory artifacts unreadable to operators and
+unusable as context for English-language agents.
+
+### Changed
+- **`src/core/prompts/persona-generation.ts`** — full English rewrite.
+  PERSONA_SYSTEM_PROMPT now instructs the LLM in English, including
+  the 4-layer scan (Base & Facts / Interest Graph / Interface / Core),
+  write+edit tool constraints, and the persona.md template.
+  The user prompt builder emits English mode labels, statistics, and
+  iteration guidance.
+- **`src/core/prompts/scene-extraction.ts`** — full English rewrite.
+  Scene consolidation architect role, tier warnings (Red/Orange/Yellow),
+  UPDATE / MERGE / CREATE workflow, deletion via \`[DELETED]\` marker,
+  and the scene-file Markdown template — all in English. Added an
+  explicit rule that scene filenames must use English (kebab-case).
+- **`src/core/prompts/l1-extraction.ts`** — full English rewrite.
+  Scene segmentation + memory extraction rules, persona / episodic /
+  instruction type definitions, priority scoring, and JSON output
+  schema all in English. Default placeholders ("(none)") in English.
+- **`src/core/prompts/l1-dedup.ts`** — full English rewrite.
+  Conflict-detection rules, action set (store/skip/update/merge),
+  timestamp merge semantics, and JSON output schema in English.
+- **`src/core/scene/scene-extractor.ts`** — translated dynamic strings:
+  3-tier scene-count warnings, "(no existing scenes yet)" fallback,
+  capacity counter header ("Current scene count: N / M"), heat / updated
+  labels in scene summary.
+- **`src/core/scene/scene-navigation.ts`** — NAV_FOOTER, heat/updated
+  labels, and the navigation intro line all in English.
+- **`src/core/persona/persona-generator.ts`** — changed-scenes section
+  header and analysis directive in English.
+- **`src/core/persona/persona-trigger.ts`** — all 4 trigger reason
+  strings translated (cold start, recovery, first scene, threshold).
+- **`src/core/hooks/auto-recall.ts`** — \`MEMORY_TOOLS_GUIDE\` (injected
+  into the agent's system context at session start) fully translated.
+  This is the single most user-impactful translation: previously this
+  Chinese block was injected into every conversation context.
+- **`src/core/record/l1-extractor.ts`** — \`"unknown scene"\` fallback.
+- **`src/core/store/tcvdb.ts`** — 3 table description strings translated.
+
+### Kept Chinese (intentional, not localization gaps)
+- **`src/utils/sanitize.ts`**: prompt-injection regex patterns target
+  Chinese attack phrases ("忽略所有指令" = "ignore all instructions").
+  Removing these would degrade security for Chinese-language inputs.
+- **`src/core/store/sqlite.ts`**: Chinese stopwords for the jieba
+  tokenizer. These are a vocabulary, not a localization. Useful when
+  the corpus contains Chinese text.
+- **`src/utils/memory-cleaner.ts`**: source-code comments (not
+  user-visible).
+
+### Verified
+- **Real-LLM smoke** on the same populated project (\`~/.claude/.claude/memory/\`,
+  88 L0 turns, 1 session) with full memory wipe + cursor reset to
+  re-extract from scratch. Result with English prompts (Sonnet 4.6):
+  - 2 scene blocks created (\`server-infrastructure-and-deployment.md\`,
+    \`orchestrator-architecture-and-code-quality.md\`) — **English filenames**
+  - persona.md: **4922 bytes, 100% English**, archetype line "A disciplined
+    systems builder who encodes quality and order directly into his tooling"
+  - **0 Chinese characters** in any output file (\`grep [\\x{4e00}-\\x{9fff}]\` = 0)
+  - Wall clock: 122s for L1+L2+L3 chain (vs 79s on v0.3.3 — extra time
+    reflects denser English token output, not regression)
+- Unit suite: **72 / 72** still passing — prompt strings are not unit-tested
+  for content (the prompts are LLM inputs, not asserted-on data structures).
+- \`npm run build\` ✅, \`npm run lint:gate\` ✅.
+
+### Migration
+- **Existing persona.md / scene_blocks/ in Chinese will keep being read
+  as-is** — the LLM tolerates mixed-language history. On the next L2/L3
+  pass, new updates are added in English. The Chinese sections age out
+  naturally as scenes get rewritten or merged.
+- **To force a full English regeneration**: delete \`persona.md\` and
+  \`scene_blocks/\*\`, wipe \`vectors.db\`, reset \`runner_states.*.last_l1_cursor\`
+  to 0 in \`.metadata/recall_checkpoint.json\`, then run \`claude-mem extract\`.
+- No code-level API changes. \`buildPersonaPrompt\` / \`buildSceneExtractionPrompt\`
+  / \`formatExtractionPrompt\` / \`formatBatchConflictPrompt\` signatures
+  unchanged.
+
+---
+
 ## [0.3.3] — 2026-05-16
 
 Full L1 → L2 → L3 chain in `claude-mem extract`. Single CLI invocation
