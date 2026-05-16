@@ -20,7 +20,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { spawn, execSync } = require("node:child_process");
 
 const DEFAULT_INTERVAL_MIN = 30;
 const DEFAULT_EXTRACT_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
@@ -29,9 +29,31 @@ const SIGTERM_GRACE_MS = 60 * 1000; // 60s hard fallback
 const ALLOWLIST_PATH =
   process.env.CLAUDE_MEM_ALLOWLIST ||
   path.join(process.env.HOME || "/root", ".claude", "claude-mem-projects.txt");
-const CLAUDE_MEM_BIN =
-  process.env.CLAUDE_MEM_BIN ||
-  path.join(process.env.HOME || "/root", ".npm-global", "bin", "claude-mem");
+
+/**
+ * Resolve `claude-mem` bin path. Priority (codex round 1 adversarial P2 fix):
+ *   1. $CLAUDE_MEM_BIN env (user override)
+ *   2. `command -v claude-mem` lookup on PATH (covers nvm, pnpm, /usr/local,
+ *      custom npm prefixes)
+ *   3. Hard-coded ~/.npm-global/bin/claude-mem fallback (preserves v0.3.1
+ *      pre-fix behavior on default npm-global setups)
+ * Returns the resolved path or the fallback. Caller checks existence.
+ */
+function resolveBinPath() {
+  if (process.env.CLAUDE_MEM_BIN) return process.env.CLAUDE_MEM_BIN;
+  try {
+    const out = execSync("command -v claude-mem", {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      shell: "/bin/bash",
+    }).trim();
+    if (out) return out;
+  } catch {
+    // PATH lookup failed; fall through to default
+  }
+  return path.join(process.env.HOME || "/root", ".npm-global", "bin", "claude-mem");
+}
+const CLAUDE_MEM_BIN = resolveBinPath();
 
 function lockPath(projectPath) {
   return path.join(projectPath, ".claude", "memory", ".extract.lock");
@@ -256,7 +278,6 @@ async function main() {
   );
 
   let stopRequested = false;
-  let currentTickPromise = null;
 
   const shutdown = (signal) => {
     process.stdout.write(`scheduler: ${signal} received, draining...\n`);
@@ -270,28 +291,31 @@ async function main() {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
-  const tick = async () => {
-    if (stopRequested) return;
+  const sleep = (ms) =>
+    new Promise((resolve) => {
+      const t = setTimeout(resolve, ms);
+      t.unref();
+    });
+
+  // Chained-setTimeout loop (codex round 1 adversarial P2 fix):
+  // setInterval overlaps when a tick exceeds intervalMs (slow LLM, 5-min
+  // timeouts, many projects). Chain pattern guarantees serial ticks +
+  // no parallel sweeps, preserving the "no rate-limit storm" invariant.
+  while (!stopRequested) {
     try {
-      currentTickPromise = runOnce(ALLOWLIST_PATH, { stopRequested: () => stopRequested });
-      const summary = await currentTickPromise;
+      const summary = await runOnce(ALLOWLIST_PATH, { stopRequested: () => stopRequested });
       process.stdout.write(
         `scheduler: tick complete projects=${summary.projects} ok=${summary.extracted} skip=${summary.skipped} fail=${summary.failed}\n`,
       );
     } catch (err) {
       process.stderr.write(`scheduler: tick error: ${err.message}\n`);
-    } finally {
-      currentTickPromise = null;
     }
-    if (stopRequested) {
-      process.stdout.write("scheduler: drained, exit 0\n");
-      process.exit(0);
-    }
-  };
+    if (stopRequested) break;
+    await sleep(intervalMs);
+  }
 
-  // First tick on boot, then every intervalMs.
-  await tick();
-  setInterval(tick, intervalMs);
+  process.stdout.write("scheduler: drained, exit 0\n");
+  process.exit(0);
 }
 
 module.exports = {
