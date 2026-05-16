@@ -85,11 +85,14 @@ All commands: cwd inherited from Claude Code (likely `$CLAUDE_PROJECT_DIR`). All
 | Hook | Hook stdin from Claude Code | Final command in settings.json | Notes |
 |---|---|---|---|
 | `SessionStart` | `{ "session_id", ... }` (ignored) | `<ABS_BIN> recall --query "$(basename "$CLAUDE_PROJECT_DIR")" --limit 5 --platform claude-code --auto-init` | Stdin not consumed (uses project dir name as query). Auto-init bootstraps `.claude/memory/` on first session in a new project. Recall on empty memory → "" → no stdout pollution. |
-| `UserPromptSubmit` | `{ "user_prompt": "...", "session_id": "..." }` | `<ABS_BIN_DIR>/../hooks/claude-mem/recall-wrapper.sh` (script reads stdin, extracts `user_prompt` via inline node, pipes to `<ABS_BIN> recall --query - --limit 3 --platform claude-code --auto-init`) | Wrapper script handles the JSON envelope. Without wrapper, recall would search for the entire JSON string and never match. |
-| `PostToolUse` (matcher: `Edit\|Write\|MultiEdit`) | `{ "tool_name", "tool_input", "tool_response", "session_id" }` | `<ABS_BIN_DIR>/../hooks/claude-mem/capture-wrapper.sh` (script translates to `{user, assistant, metadata:{toolName,sessionId,tags:["code-change"]}}` via inline node, pipes to `<ABS_BIN> capture --platform claude-code --auto-init`); wrapper backgrounds the capture with `&` and returns ≤500ms | Wrapper translates hook JSON → capture stdin shape. Backgrounded so the hook returns immediately. |
-| `Stop` | `{ "session_id", "stop_hook_active", "transcript"? }` | `<ABS_BIN_DIR>/../hooks/claude-mem/stop-wrapper.sh` (script translates to `{user:"session-end", assistant:"<transcript-or-empty>", metadata:{tags:["session-summary"], sessionId}}`, pipes to `<ABS_BIN> capture --platform claude-code --auto-init`); synchronous | Wrapper translates session-end envelope → capture's `{user, assistant}` shape. |
+| `UserPromptSubmit` | `{ "user_prompt": "...", "session_id": "..." }` | `<WRAPPER_DIR>/recall-wrapper.sh` (script reads stdin, extracts `user_prompt` via inline node, pipes to `<ABS_BIN> recall --query - --limit 3 --platform claude-code --auto-init`) | Wrapper script handles the JSON envelope. Without wrapper, recall would search for the entire JSON string and never match. |
+| `PostToolUse` (matcher: `Edit\|Write\|MultiEdit`) | `{ "tool_name", "tool_input", "tool_response", "session_id" }` | `<WRAPPER_DIR>/capture-wrapper.sh` (script translates to `{user, assistant, metadata:{toolName,sessionId,tags:["code-change"]}}` via inline node, pipes to `<ABS_BIN> capture --platform claude-code --auto-init`); wrapper backgrounds the capture with `&` and returns ≤500ms | Wrapper translates hook JSON → capture stdin shape. Backgrounded so the hook returns immediately. |
+| `Stop` | `{ "session_id", "stop_hook_active", "transcript"? }` | `<WRAPPER_DIR>/stop-wrapper.sh` (script translates to `{user:"session-end", assistant:"<transcript-or-empty>", metadata:{tags:["session-summary"], sessionId}}`, pipes to `<ABS_BIN> capture --platform claude-code --auto-init`); synchronous | Wrapper translates session-end envelope → capture's `{user, assistant}` shape. |
 
-`<ABS_BIN>` = output of `which claude-mem` at install time, baked into settings.json. `<ABS_BIN_DIR>` = `dirname` of that.
+**Path resolution (codex round 2, P1 fix):**
+- `<ABS_BIN>` = output of `which claude-mem` at install time, baked into settings.json
+- `<WRAPPER_DIR>` = `$HOME/.claude/hooks/claude-mem/` — **EXPANDED to absolute path at install time** (e.g. `/home/ubuntu/.claude/hooks/claude-mem/`), NOT relative to `dirname(<ABS_BIN>)`. The previous draft (`<ABS_BIN_DIR>/../hooks/...`) was wrong because `dirname(/usr/local/bin/claude-mem)` is `/usr/local/bin`, and `/usr/local/hooks/...` doesn't exist.
+- `install.sh` performs the `$HOME` expansion at install time and writes literal paths into `~/.claude/settings.json`.
 
 **Wrapper scripts** (3 files, ~30-40 lines each, all in `claude-code-integration/templates/`):
 - `recall-wrapper.sh` — extracts `user_prompt` from stdin JSON, pipes to recall
@@ -109,7 +112,7 @@ Wrappers installed by `install.sh` to `~/.claude/hooks/claude-mem/` (chmod +x).
 - **claude-mem v12.7.5 conflict detection** — pre-flight greps `~/.claude/settings.json` for `"claude-mem"` outside the marker. If found → exit 1 with explicit message. Override: `--allow-coexist`.
 - **No per-project `.gitignore`** writes (install is global). Each project's `init` (manual or auto) writes its own `.gitignore`.
 - **Requires jq.** Hard dep; if missing → print OS-specific install command and exit 1.
-- **Wrapper script install:** `install.sh` copies `templates/hook-capture-wrapper.sh` to `~/.claude/hooks/claude-mem/hook-capture-wrapper.sh` (creates dir if absent, `chmod +x`). Hook command refers to it via absolute path.
+- **Wrapper scripts install (codex round 2, P2 fix):** `install.sh` copies ALL three wrappers — `templates/recall-wrapper.sh`, `templates/capture-wrapper.sh`, `templates/stop-wrapper.sh` — to `~/.claude/hooks/claude-mem/` (creates dir recursively if absent, `chmod +x` each). Settings.json hook commands refer to each wrapper by its expanded absolute path (e.g. `/home/<user>/.claude/hooks/claude-mem/recall-wrapper.sh`). The expansion happens in `install.sh` (not at hook runtime) so the resolved path is stable across Claude Code spawn environments.
 
 ## 6. WP3.6 Hy3 smoke design
 
@@ -187,3 +190,14 @@ All open. Ready to implement after `/codex:review`.
 | C3 (P2) | `UserPromptSubmit` hook said `recall --query -` reads stdin verbatim, but stdin is `{user_prompt, session_id, ...}` JSON → recall searches for the JSON string and never matches | **Same wrapper approach** — `recall-wrapper.sh` extracts `user_prompt` and pipes to recall. Codified in §4. |
 
 Round-2 codex review runs immediately after this commit. Per orchestrator policy (max 2 SPEC review rounds), if round 2 reveals new P1/P2 → fix and proceed without round 3 unless user requests.
+
+### Round 2
+
+| # | Finding | Disposition |
+|---|---|---|
+| C4 (P1) | Hooks pointed at `<ABS_BIN_DIR>/../hooks/claude-mem/<wrapper>.sh`. With normal npm install (`/usr/local/bin/claude-mem` or `~/.npm-global/bin/claude-mem`), this resolved to `/usr/local/hooks/...` which doesn't exist — every wrapper-mediated hook would fail | **Switched to `<WRAPPER_DIR>` = `$HOME/.claude/hooks/claude-mem/`** expanded at install time, written literally into settings.json. Independent of where `claude-mem` bin lives. |
+| C5 (P2) | §5 install.sh design still mentioned ONE wrapper file. After C2 (P1) we have 3 wrappers (recall, capture, stop) | **Updated §5** to install all 3 wrappers with `chmod +x` each. |
+
+Per orchestrator policy: round-3 review skipped. Risk acceptance: any
+remaining design-level error surfaces during Phase A implementation and
+will be caught by `@test-verifier` + the integration test (Task C4).
