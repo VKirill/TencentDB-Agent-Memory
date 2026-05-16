@@ -31,6 +31,8 @@ export interface RunRecallOptions {
   limit: number;
   /** Auto-init missing .claude/memory/ on first use (hook scenario). */
   autoInit?: boolean;
+  /** Platform tag — written into config on auto-init (e.g. "claude-code"). */
+  platform?: string;
 }
 
 export interface RunRecallResult {
@@ -55,7 +57,11 @@ interface L0Message {
 export async function runRecall(opts: RunRecallOptions): Promise<RunRecallResult> {
   let ctx;
   try {
-    ctx = await loadContextOrAutoInit({ projectRoot: opts.projectRoot, autoInit: opts.autoInit });
+    ctx = await loadContextOrAutoInit({
+      projectRoot: opts.projectRoot,
+      autoInit: opts.autoInit,
+      platform: opts.platform,
+    });
   } catch (err) {
     return {
       ok: false,

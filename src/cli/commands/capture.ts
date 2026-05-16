@@ -40,6 +40,8 @@ export interface RunCaptureOptions {
    * without manual `claude-mem init`.
    */
   autoInit?: boolean;
+  /** Platform tag — written into config on auto-init (e.g. "claude-code"). */
+  platform?: string;
 }
 
 export interface RunCaptureResult {
@@ -54,7 +56,11 @@ const DEFAULT_SESSION_KEY = "default";
 export async function runCapture(opts: RunCaptureOptions): Promise<RunCaptureResult> {
   let ctx;
   try {
-    ctx = await loadContextOrAutoInit({ projectRoot: opts.projectRoot, autoInit: opts.autoInit });
+    ctx = await loadContextOrAutoInit({
+      projectRoot: opts.projectRoot,
+      autoInit: opts.autoInit,
+      platform: opts.platform,
+    });
   } catch (err) {
     // No config — we can't write to <dataDir>/conversations
     return {

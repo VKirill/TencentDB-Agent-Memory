@@ -142,6 +142,8 @@ function createFileLogger(logPath: string): CliLogger {
 export interface LoadOrAutoInitOptions extends LoadContextOptions {
   /** When true and the config is missing, auto-init the project dir silently first. */
   autoInit?: boolean;
+  /** When set together with autoInit, written into the new config's `platform` field. */
+  platform?: string;
 }
 
 /**
@@ -167,6 +169,22 @@ export async function loadContextOrAutoInit(opts: LoadOrAutoInitOptions): Promis
         `(original loadContext error: ${firstErr instanceof Error ? firstErr.message : String(firstErr)})`,
       );
     }
+
+    // If the caller passed a platform (e.g. --platform claude-code from a
+    // hook), patch the freshly-created config.json so the v0.3 vector
+    // pipeline (when wired) can discover that this dir is Claude-Code-owned
+    // without re-asking.
+    if (opts.platform) {
+      try {
+        const cfgPath = path.join(opts.projectRoot, ".claude", "memory", "config.json");
+        const raw = JSON.parse(fs.readFileSync(cfgPath, "utf-8")) as Record<string, unknown>;
+        raw.platform = opts.platform;
+        fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + "\n");
+      } catch {
+        // Non-fatal — config still loadable, platform tag missed
+      }
+    }
+
     return await loadContext(opts);
   }
 }
