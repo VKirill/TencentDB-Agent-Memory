@@ -9,6 +9,41 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.3.6] — 2026-05-16
+
+`PERSONA_SYSTEM_PROMPT` rewritten from Tencent's archetype/lifestyle template
+to an actionable **coder profile** — concrete tech stack, infra, workflows,
+and hard rules instead of personality observations.
+
+### Changed
+- **`src/core/prompts/persona-generation.ts`** — full rewrite of
+  `PERSONA_SYSTEM_PROMPT` constant:
+  - New role header: `🛠️ Coder Profile Architect — Incremental Evolution Protocol`
+  - 8 concrete sections replacing the old 4-layer scan + lifestyle chapters:
+    **Stack**, **Infrastructure**, **Workflow conventions**, **Hard rules**,
+    **Active projects**, **Communication preferences**, **Decision patterns**,
+    **Open / pending**
+  - Character cap bumped **2000 → 3000** (tech facts are denser than archetype prose)
+  - Hard prohibitions explicitly ban: "Archetype", "Texture of Life",
+    "Anthropological", "narrative coherence" wording
+  - Empty section handling: omit header entirely (no `## Stack\n(empty)` markers)
+  - `buildPersonaPrompt` cosmetic tweaks: mode label updated
+    ("First generation (coder profile)" / "Incremental update"), user-prompt
+    cap reference 2000 → 3000, iteration guide says "fact" not "insight"
+- **`package.json`** + **`src/cli/index.ts`** — version 0.3.5 → 0.3.6
+
+### Verified
+- **83 tests** green (no test breakage — existing tests assert on signatures,
+  not prompt content).
+- **Build** (`tsdown`) clean, no TypeScript errors.
+- **lint:gate** (`check-no-openclaw.sh`) passes.
+- **Real smoke** on `~/.claude/.claude/memory/` (full wipe + cursor reset +
+  Sonnet 4.6 extract): persona.md generated with coder profile shape — "Stack"
+  and "Workflow conventions" headers present, size ≤3500B, zero forbidden
+  words ("archetype", "texture of life", "anthropological", "narrative coherence").
+
+---
+
 ## [0.3.5] — 2026-05-16
 
 `claude-mem recall` now prepends a `<persona-context>` block with the full

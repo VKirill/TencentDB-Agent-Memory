@@ -1,6 +1,6 @@
 /**
  * Persona Generation Prompt — instructs LLM to generate/update user persona
- * using the four-layer deep scan model.
+ * as a coder profile (tech stack, infra, workflows, hard rules).
  *
  * v3: Split into systemPrompt (role + constraints + logic + template) and
  * userPrompt (data). Tool names aligned to OpenClaw actual API (write/edit).
@@ -9,6 +9,12 @@
  * was Chinese; this rewrite preserves all semantics, the 4-layer scan
  * structure, and the same write/edit tool contract. Output language is
  * English by default — the persona.md the LLM writes will be English.
+ *
+ * v0.3.6: Rewrote PERSONA_SYSTEM_PROMPT to produce a coder profile instead
+ * of Tencent's archetype/lifestyle template. 8 concrete sections (Stack,
+ * Infrastructure, Workflow conventions, Hard rules, Active projects,
+ * Communication preferences, Decision patterns, Open / pending). Cap bumped
+ * 2000 → 3000 chars. No archetype, lifestyle, or psychological inference.
  */
 
 export interface PersonaPromptParams {
@@ -35,9 +41,9 @@ export interface PersonaPromptResult {
 // System Prompt (stable: role + constraints + logic + template)
 // ============================
 
-const PERSONA_SYSTEM_PROMPT = `# 🧬 Persona Architect - Incremental Evolution Protocol
+const PERSONA_SYSTEM_PROMPT = `# 🛠️ Coder Profile Architect — Incremental Evolution Protocol
 
-Combine the existing persona.md with the new / changed block information, analyze deeply, and then use the file tools to write the result to the \`persona.md\` file. **All output you write MUST be in English.**
+Combine the existing persona.md with the new / changed scene blocks. Distil concrete, actionable facts about how this developer works — tech stack, infrastructure, workflows, hard rules — and write the result to persona.md using the file tools. **All output in English.**
 
 ## ⛔ File Operation Constraints (strict)
 
@@ -49,97 +55,86 @@ Combine the existing persona.md with the new / changed block information, analyz
 4. **No need for a read tool**: the full current persona.md is provided in the user message; update directly from it.
 
 ### 🚫 Hard prohibitions
-- **Do not exceed length budget**: persona.md total length must stay under 2000 characters. Summarize aggressively and drop unimportant info as it grows.
-- **Do not over-speculate**: never hallucinate info that was not mentioned. Especially in cold-start, stay restrained. If you have no info for a section, leave it empty.
-- **Do not use non-scene sources**: every element of the persona MUST come from the scene data provided below. Do not extract personal info from workspace directory structure, file paths, system metadata, or any other technical fingerprint.
+- **Cap: 3000 characters total.** Summarize aggressively and drop lower-priority facts as the file grows.
+- **No personality archetypes, lifestyle observations, or "psychological" inferences.** Concrete, verifiable facts only.
+- **No content from non-scene sources.** Do not extract info from workspace directory structure, file paths, system metadata, or any other technical fingerprint not present in the scene data.
+- **Skip categories where you have no concrete evidence** — omit the header entirely (don't write \`## Stack\n(empty)\`).
 - **Do not touch any file other than persona.md.**
+- **Do not use the words**: "Archetype", "Texture of Life", "Anthropological", "narrative coherence" — those concepts are removed.
 
 ---
 
-## ⚙️ The Core Logic
+## ⚙️ What to capture (the only sections allowed)
 
-🧠 Core thinking engine: **Connect & Synthesize**
-Follow the "narrative coherence" principle. No bullet-point spamming.
+Use exactly these 8 sections — omit any section you have no evidence for. Omit the header entirely when a section is empty.
 
-1. Find the **connecting thread**
-Do not look at info in isolation. Look for the common logic behind behaviors across different domains.
-**Stay concise. Do not over-guess. When unsure, leave it out.**
+### Stack
+Languages, runtimes (with versions), frameworks, package managers, databases, key libraries. Bullet list. Most-used first.
 
-Perform the following **four-layer deep scan**:
+### Infrastructure
+Servers (IP / domain), DNS, deploy targets, monitoring, secrets management. Bullet list. Concrete identifiers only.
 
-### 🟢 Layer 1: The Base & Facts → [Establishing Connection]
-* **Scan target**: hard facts, demographic features, current state.
-* **Practical value**: gives the agent **ice-breaker topics** and **contextual awareness**.
+### Workflow conventions
+Branching / commit / PR / testing / review patterns. How features get shipped (worktree per feature? per-task commit? test-verifier discipline?). Bullet list.
 
-### 🔵 Layer 2: The Interest Graph → [Conversational Material]
-* **Scan target**: things the user invests time, money, or attention in.
-* **Extraction principle**: **distinguish activity level** (active hobby / passive consumption / dormant interest).
-* **Practical value**: enables **high-quality chit-chat** and **lifestyle recommendations**.
+### Hard rules (do not violate)
+Things the developer explicitly forbade or set as inviolable. E.g. file size caps, "never push to main without explicit ask", "always run X before Y". Bullet list. Each rule must be enforceable by an agent.
 
-### 🟡 Layer 3: The Interface → [Friction Elimination]
-* **Scan target**: communication habits, landmines, workflow preferences.
-* **Practical value**: guides the agent on **how to talk and how to deliver results** without stepping on mines.
+### Active projects
+Currently-in-flight projects: name, repo / path, role of the developer, current state. Bullet list. Drop completed / abandoned.
 
-### 🔴 Layer 4: The Core → [Deep Resonance]
-* **Scan target**: decision logic, contradictions, ultimate drivers.
-* **Practical value**: enables the agent to be a **co-pilot capable of making decisions on the user's behalf**.
+### Communication preferences
+Language (English / Russian / mixed?), verbosity (terse / detailed?), register (technical / plain?), formatting (markdown / prose?). Bullet list.
+
+### Decision patterns
+How trade-offs are evaluated: quality vs cost, speed vs correctness, build vs buy. Bullet list. Distil from observed choices, not stated values.
+
+### Open / pending
+What's currently being figured out, blockers, things deferred to "later". Bullet list. Drop items as they get resolved.
 
 ---
 
-## 📝 The Persona Template
+## 📝 Output template
 
-Use the **write** tool to write the final content. You may adapt structure if needed (drop or add chapters when info is thin / abundant). **Markdown format is mandatory.**
+\`\`\`markdown
+# Coder Profile
 
-\`\`\`\`markdown
-# User Narrative Profile
+> Last updated: {{CURRENT_TIME}}
 
-> **Archetype**: [one-sentence definition. Example: "a pragmatic idealist struggling under real-world gravity yet trying to build an ideal world through technology".]
+## Stack
+- ...
 
-> **Basic Information**
-(User's basic info — age, gender, profession, etc. When updating: overwrite on conflict, accumulate when non-conflicting.)
- -
- -
+## Infrastructure
+- ...
 
-> **Long-term Preferences**
-(The user's most stable, reusable preferences as you observe them.)
-    -
-    -
+## Workflow conventions
+- ...
 
-## 📖 Chapter 1: Context & Current State
-*(Weave basic facts and current state into a coherent background paragraph.)*
+## Hard rules
+- ...
 
-**[Write a coherent description here. When items diverge significantly, bullet them.]**
+## Active projects
+- ...
 
-## 🎨 Chapter 2: The Texture of Life
-*(Tie interests, consumption, and life habits together to show taste.)*
+## Communication preferences
+- ...
 
-**[Write a coherent description here, focused on the unity of "interests / preferences" and "taste". Bullet when items diverge significantly.]**
+## Decision patterns
+- ...
 
-## 🤖 Chapter 3: Interaction & Cognitive Protocol
-*(This is the Main Agent's action guide. Keep semi-structured for practicality, but always explain "why".)*
-
-### 3.1 How to Speak
-### 3.2 How to Think
-
-## 🧩 Chapter 4: Deep Insights & Evolution
-*(Anthropological field notes.)*
-
-* **Contradictory unity**: [describe traits that look conflicting on the surface but are coherent at depth].
-* **Evolution trajectory**: [add timestamps; bullet recent shifts in the user's behavior or beliefs].
-* **Emergent traits**: distill 3-7 core trait tags, one per line, each with a brief 10-15 word annotation.
-  - \`TagName\` — short annotation
-\`\`\`\`
+## Open / pending
+- ...
+\`\`\`
 
 ---
 
 ### ⚠️ Success criteria
 - ✅ **You MUST use the write or edit tool to commit the final result to \`persona.md\`.**
-- ✅ Generate deep insights grounded in the scene evidence.
-- ✅ Content ends at Chapter 4 (scene navigation is appended by the engine automatically).
-- ✅ Follow the template format strictly.
-- ✅ Do not add a scene navigation section yourself (the engine appends it).
-- ✅ Operate on persona.md only — no other files.
-- ✅ **Write everything in English.**`;
+- ✅ Only the 8 sections listed above may appear — no other section headers.
+- ✅ Total character count stays under 3000. Summarize aggressively.
+- ✅ **Write everything in English.**
+- ✅ No archetype wording: "Archetype", "Texture of Life", "Anthropological", "narrative coherence" must not appear anywhere.
+- ✅ Operate on persona.md only — no other files touched.`;
 
 // ============================
 // User Prompt builder (dynamic data)
@@ -157,7 +152,7 @@ export function buildPersonaPrompt(params: PersonaPromptParams): PersonaPromptRe
     triggerInfo,
   } = params;
 
-  const modeLabel = mode === "first" ? "🆕 First generation" : "🔄 Iterative update";
+  const modeLabel = mode === "first" ? "🆕 First generation (coder profile)" : "🔄 Incremental update";
 
   const triggerSection = triggerInfo
     ? `\n### Trigger info\n${triggerInfo}\n`
@@ -165,13 +160,13 @@ export function buildPersonaPrompt(params: PersonaPromptParams): PersonaPromptRe
 
   const existingPersonaSection = existingPersona
     ? `\n## 📄 Current Persona (preloaded by the engine)\n\n` +
-      `*Full content of the existing persona.md (${existingPersona.length} chars). When updating, keep total length under 2000 chars:*\n\n` +
+      `*Full content of the existing persona.md (${existingPersona.length} chars). When updating, keep total length under 3000 chars:*\n\n` +
       `\`\`\`markdown\n${existingPersona}\n\`\`\`\n\n---\n`
     : "";
 
   const iterationGuide = mode === "incremental"
     ? `\n## 🔄 Iteration decision guide\n\n` +
-      `For each changed scene, decide independently: REINFORCE (confirms an existing insight) / ADD (new dimension) / CORRECT (resolves a contradiction) / RESTRUCTURE (structural change) / NO-CHANGE (no useful new content).\n`
+      `For each changed scene, decide independently: REINFORCE (confirms an existing fact) / ADD (new dimension) / CORRECT (resolves a contradiction) / RESTRUCTURE (structural change) / NO-CHANGE (no useful new content).\n`
     : "";
 
   const userPrompt = `**⏰ Update time**: ${currentTime}
