@@ -13,6 +13,7 @@
 
 import { Command } from "commander";
 import { runInit } from "./commands/init.js";
+import { runCapture } from "./commands/capture.js";
 
 export function buildCli(): Command {
   const program = new Command();
@@ -41,7 +42,19 @@ export function buildCli(): Command {
       process.exit(0);
     });
 
-  // Tasks 16/18/20 will add: capture / recall / stats.
+  program
+    .command("capture")
+    .description("Read { user, assistant } JSON on stdin; write to L0.")
+    .action(async () => {
+      const result = await runCapture({ projectRoot: process.cwd() });
+      if (!result.ok) {
+        process.stderr.write(`claude-mem capture: ${result.error ?? "unknown error"}\n`);
+      }
+      // Hook discipline: exit 0 even on capture failure
+      process.exit(0);
+    });
+
+  // Tasks 18/20 will add: recall / stats.
 
   return program;
 }
