@@ -77,17 +77,24 @@ export async function loadContext(opts: LoadContextOptions): Promise<ClaudeCliCo
     );
   }
 
-  const config = parseConfig(raw);
-
-  // ── Env-var merge (secrets never live in config.json) ────────────────
+  // ── Env-var merge into RAW before parseConfig ────────────────────────
+  // Bug fix (codex adversarial review, 2026-05-16): parseConfig validates
+  // the embedding block and disables the provider when apiKey is empty.
+  // Merging env after parseConfig would set apiKey but leave enabled=false,
+  // silently disabling embeddings even with a valid VOYAGE_API_KEY.
+  // Merge before parsing so validation sees the resolved keys.
   const openrouterKey = getEnv("OPENROUTER_API_KEY");
-  if (openrouterKey) {
-    config.llm.apiKey = openrouterKey;
-  }
   const voyageKey = getEnv("VOYAGE_API_KEY");
-  if (voyageKey) {
-    config.embedding.apiKey = voyageKey;
+  if (openrouterKey) {
+    const llmRaw = (raw.llm as Record<string, unknown> | undefined) ?? {};
+    raw.llm = { ...llmRaw, apiKey: openrouterKey };
   }
+  if (voyageKey) {
+    const embRaw = (raw.embedding as Record<string, unknown> | undefined) ?? {};
+    raw.embedding = { ...embRaw, apiKey: voyageKey };
+  }
+
+  const config = parseConfig(raw);
 
   // ── Logger: file-only, hook-friendly ─────────────────────────────────
   const logPath = path.join(stateDir, LOG_FILE);
