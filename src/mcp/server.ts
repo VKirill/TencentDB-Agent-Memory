@@ -42,8 +42,9 @@ function stripXmlWrapper(text: string, tag: string): string {
 }
 
 // ── Tool handler implementations ────────────────────────────────────────────
+// Exported so unit tests can call them directly without spawning the server.
 
-async function handleMemorySearch(
+export async function handleMemorySearch(
   args: Record<string, unknown>,
 ): Promise<string> {
   const query = String(args.query ?? "");
@@ -71,7 +72,7 @@ async function handleMemorySearch(
   return stripXmlWrapper(raw, "recall-matches");
 }
 
-async function handleConversationSearch(
+export async function handleConversationSearch(
   args: Record<string, unknown>,
 ): Promise<string> {
   const query = String(args.query ?? "");
@@ -98,7 +99,7 @@ async function handleConversationSearch(
   return stripXmlWrapper(raw, "recall-matches");
 }
 
-async function handleRecallPersona(): Promise<string> {
+export async function handleRecallPersona(): Promise<string> {
   let ctx;
   try {
     ctx = await loadContextOrAutoInit({
@@ -118,7 +119,7 @@ async function handleRecallPersona(): Promise<string> {
   return stripXmlWrapper(personaRaw, "persona-context");
 }
 
-async function handleRecallScenes(): Promise<string> {
+export async function handleRecallScenes(): Promise<string> {
   let ctx;
   try {
     ctx = await loadContextOrAutoInit({
