@@ -33,3 +33,14 @@ src/core/store/factory.ts
 src/core/store/sqlite.ts
 src/core/tdai-core.ts
 src/core/types.ts
+
+# src/utils/pipeline-factory.ts: parameter `openclawConfig: unknown` is
+# part of the contract with src/core/ callers (seed-runtime, tdai-core
+# dead branch). Cannot rename without modifying core. Standalone mode
+# passes undefined and uses `llmRunner` instead — runtime-safe.
+src/utils/pipeline-factory.ts
+
+# src/cli/commands/seed.ts: thin shim around src/core/seed/seed-runtime.ts
+# that re-emits `openclawConfig`. Dropped from v0.1 CLI per SPEC §2;
+# file deleted entirely in Task 14 (CLI rewrite). Whitelisted until then.
+src/cli/commands/seed.ts

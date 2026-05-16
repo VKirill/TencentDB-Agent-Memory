@@ -3,12 +3,17 @@
  * MemoryPipelineManager instances with VectorStore, EmbeddingService,
  * L1 runner, L2 runner, L3 runner, and persister.
  *
- * Used by both:
- * - `index.ts` (live plugin runtime)
- * - `seed-runtime.ts` (standalone seed CLI command)
+ * Used by `seed-runtime.ts` (in src/core/) and any future host
+ * adapters that need to wire the same pipeline shape.
  *
  * This avoids duplicating VectorStore init, L1/L2/L3 extraction logic,
  * persister wiring, and destroy sequences across multiple callers.
+ *
+ * NOTE: parameter names like `openclawConfig` are upstream-legacy and
+ * preserved here to maintain the contract with `src/core/`
+ * (which we never modify per the "do not touch core" invariant).
+ * In standalone mode this field is always undefined and the LLM
+ * code path goes through `llmRunner` instead.
  */
 
 import fs from "node:fs";
@@ -63,7 +68,7 @@ export interface PipelineFactoryOptions {
   pluginDataDir: string;
   /** Parsed memory-tdai config. */
   cfg: MemoryTdaiConfig;
-  /** OpenClaw config object (needed for LLM calls in L1). */
+  /** Legacy host-plugin config (used only by core/seed-runtime + dead branch in tdai-core; undefined in standalone mode — pass undefined and rely on `l1LlmRunner`/`l2l3LlmRunner` instead). */
   openclawConfig: unknown;
   /** Logger instance. */
   logger: PipelineLogger;
