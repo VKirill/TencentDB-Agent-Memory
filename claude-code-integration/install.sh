@@ -17,7 +17,7 @@
 #   0 — success or no-op (idempotent re-run)
 #   1 — bin not found, jq missing, conflicting v12.7.5 hooks present
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATES_DIR="$SCRIPT_DIR/templates"
@@ -151,7 +151,6 @@ trap 'rm -f "$RESOLVED_TPL" "$MERGED"' EXIT
 HOOKS_DIR_ESCAPED="$(printf '%s' "$HOOKS_DIR" | sed 's/[\/&]/\\&/g')"
 jq \
   --slurpfile new "$RESOLVED_TPL" \
-  --argjson allowCoexist "$ALLOW_COEXIST" \
   --arg hooksDir "$HOOKS_DIR" \
   --arg binPath "$CLAUDE_MEM_BIN" '
   . as $existing |
@@ -182,7 +181,10 @@ jq \
             (
               [
                 $existingEntries[]
-                | select(($allowCoexist == 1) or (isOurs | not))
+                # Always drop OUR own entries (so re-runs upgrade, never
+                # duplicate). --allow-coexist only spares foreign claude-mem
+                # entries — it does NOT spare our own.
+                | select(isOurs | not)
               ] as $keptExisting |
               $keptExisting + $newEntries
             )
