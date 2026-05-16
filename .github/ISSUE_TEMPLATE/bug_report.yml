@@ -1,23 +1,24 @@
 name: 🐛 Bug Report
-description: Report an issue with the plugin | 报告插件使用中的问题
+description: Report an issue with @vkirill/tencentdb-agent-memory
 title: "[Bug] "
 labels: ["bug"]
 assignees: []
 body:
   - type: input
-    id: openclaw-version
+    id: package-version
     attributes:
-      label: OpenClaw Version | OpenClaw 版本
-      placeholder: e.g. 2026.3.13 | 例如：2026.3.13
+      label: Package Version
+      description: Output of `claude-mem --version` or the value in your installed package.json
+      placeholder: e.g. 0.1.0
     validations:
       required: true
 
   - type: input
-    id: plugin-version
+    id: host-context
     attributes:
-      label: Plugin Version | 插件版本
-      description: TencentDB-Agent-Memory
-      placeholder: e.g. 0.1.0 | 例如：0.1.0
+      label: Host Context
+      description: Where is claude-mem being invoked from? (e.g. standalone CLI, Claude Code hook, library import)
+      placeholder: e.g. Claude Code SessionStart hook
     validations:
       required: true
 

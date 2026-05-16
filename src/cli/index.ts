@@ -1,60 +1,114 @@
 /**
- * memory-tdai CLI entry point.
+ * `claude-mem` CLI entry point.
  *
- * Registers the `memory-tdai` namespace under the OpenClaw CLI and
- * wires up all subcommands (currently: `seed`).
+ * Top-level Commander program. Each subcommand lives in src/cli/commands/.
+ * v0.1 wires: init. capture/recall/stats land in Tasks 16/18/20.
  *
- * Integration path:
- *   index.ts → api.registerCli() → registerMemoryTdaiCli() → registerSeedCommand()
+ * Exit-code discipline: each subcommand catches its own errors and
+ * exits 0 (hooks must never block the user). Errors surface via
+ * stderr and the memory.log file. Non-zero exits are reserved for
+ * genuine CLI usage errors (e.g. unknown subcommand) which Commander
+ * handles itself.
  */
 
-import type { Command } from "commander";
-import { registerSeedCommand } from "./commands/seed.js";
+import { Command } from "commander";
+import { runInit } from "./commands/init.js";
+import { runCapture } from "./commands/capture.js";
+import { runRecall } from "./commands/recall.js";
+import { runStats, formatStatsReport } from "./commands/stats.js";
 
-// ============================
-// Context type
-// ============================
+export function buildCli(): Command {
+  const program = new Command();
 
-/**
- * Minimal context needed by seed CLI commands.
- *
- * Derived from OpenClawPluginCliContext but scoped to what seed actually needs,
- * avoiding a hard dependency on the full plugin CLI context type.
- */
-export interface SeedCliContext {
-  /** OpenClaw config (for LLM calls in L1 extraction). */
-  config: unknown;
-  /** Raw plugin config (same shape as api.pluginConfig). */
-  pluginConfig: unknown;
-  /** State directory root (e.g. ~/.openclaw). */
-  stateDir: string;
-  /** Logger instance. */
-  logger: {
-    debug?: (message: string) => void;
-    info: (message: string) => void;
-    warn: (message: string) => void;
-    error: (message: string) => void;
-  };
+  program
+    .name("claude-mem")
+    .description("Four-layer local memory for Claude Code and other agents.")
+    .version("0.1.0");
+
+  program
+    .command("init")
+    .description("Bootstrap .claude/memory/ in the current directory.")
+    .option("-f, --force", "overwrite existing config.json and .gitignore", false)
+    .action(async (opts: { force?: boolean }) => {
+      const result = await runInit({
+        projectRoot: process.cwd(),
+        force: opts.force,
+      });
+      if (result.ok) {
+        // stdout is fine here: init is interactive, not hook-invoked
+        if (result.message) process.stdout.write(result.message + "\n");
+      } else {
+        process.stderr.write(`claude-mem init: ${result.error ?? "unknown error"}\n`);
+      }
+      // Always exit 0 — hook discipline
+      process.exit(0);
+    });
+
+  program
+    .command("capture")
+    .description("Read { user, assistant } JSON on stdin; write to L0.")
+    .action(async () => {
+      const result = await runCapture({ projectRoot: process.cwd() });
+      if (!result.ok) {
+        process.stderr.write(`claude-mem capture: ${result.error ?? "unknown error"}\n`);
+      }
+      // Hook discipline: exit 0 even on capture failure
+      process.exit(0);
+    });
+
+  program
+    .command("recall")
+    .description("Keyword search over recorded turns; prints matches to stdout.")
+    .requiredOption("-q, --query <text>", "search query (use '-' to read from stdin)")
+    .option("-l, --limit <n>", "max number of matches", (v) => Number.parseInt(v, 10), 5)
+    .action(async (opts: { query: string; limit: number }) => {
+      let query = opts.query;
+      if (query === "-") {
+        query = await readStdinTrimmed();
+      }
+      const result = await runRecall({
+        projectRoot: process.cwd(),
+        query,
+        limit: opts.limit,
+      });
+      if (result.ok && result.text) process.stdout.write(result.text + "\n");
+      if (!result.ok) {
+        process.stderr.write(`claude-mem recall: ${result.error ?? "unknown error"}\n`);
+      }
+      process.exit(0);
+    });
+
+  program
+    .command("stats")
+    .description("Show memory database statistics.")
+    .action(async () => {
+      const result = await runStats({ projectRoot: process.cwd() });
+      if (result.ok) {
+        process.stdout.write(formatStatsReport(result) + "\n");
+      } else {
+        process.stderr.write(`claude-mem stats: ${result.error ?? "unknown error"}\n`);
+      }
+      process.exit(0);
+    });
+
+  return program;
 }
 
-// ============================
-// Top-level registration
-// ============================
+export async function main(argv: string[]): Promise<void> {
+  const program = buildCli();
+  await program.parseAsync(argv);
+}
 
-/**
- * Register all memory-tdai CLI subcommands under the given Commander program.
- *
- * This function is called by the plugin's `api.registerCli()` registrar.
- * It creates the `memory-tdai` namespace and delegates to individual
- * command registrars.
- *
- * @param program - The `memory-tdai` Commander command (already created by the registrar)
- * @param ctx - CLI context with config, state dir, and logger
- */
-export function registerMemoryTdaiCli(program: Command, ctx: SeedCliContext): void {
-  // Register subcommands
-  registerSeedCommand(program, ctx);
-
-  // Future: registerQueryCommand(program, ctx);
-  // Future: registerStatsCommand(program, ctx);
+async function readStdinTrimmed(): Promise<string> {
+  if (process.stdin.isTTY) return "";
+  const chunks: Buffer[] = [];
+  let total = 0;
+  const MAX = 1 * 1024 * 1024; // 1 MiB cap for recall query (way more than enough)
+  for await (const chunk of process.stdin) {
+    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
+    total += b.length;
+    if (total > MAX) break;
+    chunks.push(b);
+  }
+  return Buffer.concat(chunks).toString("utf-8").trim();
 }

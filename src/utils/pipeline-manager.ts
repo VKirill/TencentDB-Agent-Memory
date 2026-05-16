@@ -444,14 +444,13 @@ export class MemoryPipelineManager {
    * Per-session flush — scoped end-of-session handling.
    *
    * Semantically different from {@link destroy}:
-   *   - ``destroy`` tears down the *whole* scheduler (meant for process
-   *     shutdown such as OpenClaw's ``gateway_stop``).
+   *   - ``destroy`` tears down the *whole* scheduler (meant for
+   *     process shutdown).
    *   - ``flushSession`` only processes the one session identified by
    *     ``sessionKey`` and leaves every other session's timers, buffers
    *     and pipeline state untouched.  This is the correct semantic for
-   *     the Gateway's ``POST /session/end`` endpoint and for Hermes'
-   *     ``on_session_end`` callback, which fire when one conversation
-   *     ends while the process keeps serving other concurrent sessions.
+   *     per-session end-of-conversation callbacks that fire while the
+   *     process keeps serving other concurrent sessions.
    *
    * What it does:
    *   1. Cancel the session's pending L1 idle timer (no further idle

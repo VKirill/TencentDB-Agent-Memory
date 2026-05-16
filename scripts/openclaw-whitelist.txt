@@ -1,0 +1,55 @@
+# Files allowed to contain `openclaw` or `hermes` references after v0.1 cleanup.
+#
+# Rationale: "do not touch src/core/" invariant — all listed files live
+# under src/core/ and contain either:
+#   - Cosmetic mentions in comments/strings (vast majority)
+#   - Type-union literals like `hostType: "openclaw" | "hermes" | "standalone"`
+#     in src/core/types.ts (runtime-meaningful but harmless when we never set
+#     hostType to "openclaw")
+#   - Dead runtime branches (e.g. tdai-core.ts lines 425-490) never reached
+#     when hostType: "standalone"
+#   - Error-message strings (e.g. store/factory.ts) only triggered by
+#     unreachable code paths
+#
+# Verified 2026-05-16 via Task 4: no actual `import` or `require` of any
+# openclaw module from any file below. Whitelist is safe; runtime never
+# touches these branches in standalone mode.
+#
+# These files will be cleaned in v0.2 upstream-rebase cycle.
+#
+# Format: one file path per line, relative to repo root. Lines starting
+# with # are comments. Blank lines ignored.
+
+src/core/conversation/l0-recorder.ts
+src/core/persona/persona-generator.ts
+src/core/prompts/persona-generation.ts
+src/core/prompts/scene-extraction.ts
+src/core/record/l1-dedup.ts
+src/core/record/l1-extractor.ts
+src/core/scene/scene-extractor.ts
+src/core/seed/seed-runtime.ts
+src/core/store/embedding.ts
+src/core/store/factory.ts
+src/core/store/sqlite.ts
+src/core/tdai-core.ts
+src/core/types.ts
+
+# src/utils/pipeline-factory.ts: parameter `openclawConfig: unknown` is
+# part of the contract with src/core/ callers (seed-runtime, tdai-core
+# dead branch). Cannot rename without modifying core. Standalone mode
+# passes undefined and uses `llmRunner` instead — runtime-safe.
+src/utils/pipeline-factory.ts
+
+# src/cli/commands/seed.ts: thin shim around src/core/seed/seed-runtime.ts
+# that re-emits `openclawConfig`. Dropped from v0.1 CLI per SPEC §2;
+# file deleted entirely in Task 14 (CLI rewrite). Whitelisted until then.
+src/cli/commands/seed.ts
+
+# src/cli/index.ts: upstream OpenClaw CLI integration shim.
+# Rewritten entirely in Task 14 to a host-neutral Commander program.
+src/cli/index.ts
+
+# src/utils/clean-context-runner.ts: stub created in v0.1 Task 6.
+# Comments intentionally describe the upstream OpenClaw runner to
+# explain why this stub exists (see file header).
+src/utils/clean-context-runner.ts

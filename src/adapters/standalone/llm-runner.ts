@@ -1,9 +1,10 @@
 /**
  * StandaloneLLMRunner — powered by Vercel AI SDK (`ai` + `@ai-sdk/openai`).
  *
- * This runner does NOT depend on OpenClaw's `runEmbeddedPiAgent`. It is designed
- * for the Hermes Gateway scenario where TDAI runs as an independent Node.js sidecar
- * without the OpenClaw host.
+ * Host-neutral. Speaks any OpenAI-compatible HTTP endpoint via a
+ * configurable `baseUrl` + `apiKey` + `model`. Used by the CLI and by
+ * the Claude Code adapter (v0.2). Powers L1 / L2 / L3 LLM calls
+ * independently of any plugin runtime.
  *
  * Capabilities:
  * - `enableTools: false`: pure text output (L1 extraction, L1 dedup)
@@ -88,7 +89,7 @@ function createSandboxedTools(workspaceDir: string, logger?: Logger) {
           logger?.warn?.(`${TAG} read_file failed: ${msg}`);
           return JSON.stringify({ error: msg });
         }
-      }) as any,
+      }) as any, // guardian: allow — upstream code, AI SDK tool callback type isn't easily expressible
     }),
 
     write_to_file: tool({
@@ -113,7 +114,7 @@ function createSandboxedTools(workspaceDir: string, logger?: Logger) {
           logger?.warn?.(`${TAG} write_to_file failed: ${msg}`);
           return JSON.stringify({ error: msg });
         }
-      }) as any,
+      }) as any, // guardian: allow — upstream code, AI SDK tool callback type isn't easily expressible
     }),
 
     replace_in_file: tool({
@@ -144,7 +145,7 @@ function createSandboxedTools(workspaceDir: string, logger?: Logger) {
           logger?.warn?.(`${TAG} replace_in_file failed: ${msg}`);
           return JSON.stringify({ error: msg });
         }
-      }) as any,
+      }) as any, // guardian: allow — upstream code, AI SDK tool callback type isn't easily expressible
     }),
   };
 }
@@ -280,7 +281,8 @@ export interface StandaloneLLMRunnerFactoryOptions {
 /**
  * Factory that creates StandaloneLLMRunner instances.
  *
- * Used by the Gateway and Hermes host adapters.
+ * Used by the CLI and by adapter wrappers (e.g. the Claude Code
+ * adapter in v0.2) to construct host-neutral LLM runners on demand.
  */
 export class StandaloneLLMRunnerFactory implements LLMRunnerFactory {
   private config: StandaloneLLMConfig;
@@ -295,11 +297,22 @@ export class StandaloneLLMRunnerFactory implements LLMRunnerFactory {
     const enableTools = opts?.enableTools ?? false;
     const modelRef = opts?.modelRef;
 
-    // Parse "provider/model" → just use the model part for OpenAI-compatible API
+    // Resolve model slug for the configured backend.
+    //
+    // Bug fix (v0.1 Task 21): the original code blindly stripped the
+    // `provider/` prefix from `provider/model` slugs. That works for
+    // upstream OpenAI proper (which doesn't accept `openai/gpt-4`)
+    // but BREAKS for OpenRouter / DeepSeek / OpenAI-compatible
+    // aggregators that *require* the full slug.
+    //
+    // New rule: preserve the full slug by default. Strip the provider
+    // prefix ONLY when the configured baseUrl points at the real OpenAI
+    // host. Any other endpoint (OpenRouter, custom) keeps the slug.
     let model = this.config.model;
     if (modelRef) {
-      const slashIdx = modelRef.indexOf("/");
-      model = slashIdx > 0 ? modelRef.slice(slashIdx + 1) : modelRef;
+      model = isOpenAIProperHost(this.config.baseUrl)
+        ? stripProviderPrefix(modelRef)
+        : modelRef;
     }
 
     this.logger?.debug?.(
@@ -313,4 +326,29 @@ export class StandaloneLLMRunnerFactory implements LLMRunnerFactory {
       logger: this.logger,
     });
   }
+}
+
+/**
+ * True iff baseUrl points at the canonical OpenAI host. Used to decide
+ * whether `provider/model` slugs should have their prefix stripped.
+ * Exported for unit tests.
+ */
+export function isOpenAIProperHost(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false;
+  try {
+    const u = new URL(baseUrl);
+    return u.hostname === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Strip a leading `provider/` segment if present (e.g. `openai/gpt-4` →
+ * `gpt-4`). Returns input unchanged when no slash is present.
+ * Exported for unit tests.
+ */
+export function stripProviderPrefix(modelRef: string): string {
+  const slashIdx = modelRef.indexOf("/");
+  return slashIdx > 0 ? modelRef.slice(slashIdx + 1) : modelRef;
 }

@@ -4,15 +4,8 @@
  * Each adapter translates a specific host environment's API into
  * the host-neutral HostAdapter interface consumed by TdaiCore.
  *
- * Directory structure:
- *   adapters/
- *   ├── openclaw/      — OpenClaw plugin host (in-process, runEmbeddedPiAgent)
- *   └── standalone/    — Gateway / Hermes sidecar (HTTP, OpenAI-compatible API)
+ * v0.1: standalone only. v0.2 adds claude-code.
  */
-
-// OpenClaw adapter
-export { OpenClawHostAdapter, OpenClawLLMRunner, OpenClawLLMRunnerFactory } from "./openclaw/index.js";
-export type { OpenClawHostAdapterOptions, OpenClawLLMRunnerFactoryOptions } from "./openclaw/index.js";
 
 // Standalone adapter
 export { StandaloneHostAdapter, StandaloneLLMRunner, StandaloneLLMRunnerFactory } from "./standalone/index.js";
