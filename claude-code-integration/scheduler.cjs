@@ -5,7 +5,7 @@
 //   1. Read allowlist ~/.claude/claude-mem-projects.txt (hot-reload per tick)
 //   2. For each absolute project path:
 //      a. acquireLock(<project>/.claude/memory/.extract.lock)
-//      b. spawn `claude-mem extract` with cwd: project, 5-min kill timer
+//      b. spawn `claude-mem extract` with cwd: project, 15-min kill timer
 //      c. log result to <project>/.claude/memory/scheduler.log + stdout
 //      d. releaseLock
 //   3. Serial execution — never parallel (avoids LLM rate-limit storms)
@@ -23,7 +23,12 @@ const path = require("node:path");
 const { spawn, execSync } = require("node:child_process");
 
 const DEFAULT_INTERVAL_MIN = 30;
-const DEFAULT_EXTRACT_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
+// v0.3.3 R1 mitigation: bumped 5 min → 15 min to accommodate L1+L2+L3
+// chained extract worst-case latency (L1: ~30s, L2: ~5s × N sessions,
+// L3: ~60s persona). 5-min was sized for L1-only; with chain enabled,
+// busy projects (10+ sessions) could exceed the old cap and get SIGTERM
+// mid-L3 → repeated kill→retry storms across scheduler ticks.
+const DEFAULT_EXTRACT_TIMEOUT_MS = 15 * 60 * 1000; // 15 min
 const STALE_LOCK_MS = 10 * 60 * 1000; // 10 min
 const SIGTERM_GRACE_MS = 60 * 1000; // 60s hard fallback
 const ALLOWLIST_PATH =
@@ -159,7 +164,7 @@ function logResult(projectPath, line) {
 }
 
 /**
- * Spawn `claude-mem extract` with cwd=projectPath, 5-min kill timer.
+ * Spawn `claude-mem extract` with cwd=projectPath, 15-min kill timer.
  * Returns Promise<{ok:boolean, exitCode:number, killed:boolean}>.
  */
 function runExtractOnce(projectPath, timeoutMs) {

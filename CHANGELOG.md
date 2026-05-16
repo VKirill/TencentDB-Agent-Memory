@@ -9,6 +9,85 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.3.3] — 2026-05-16
+
+Full L1 → L2 → L3 chain in `claude-mem extract`. Single CLI invocation
+extracts L1 facts, derives L2 scene blocks per session, and conditionally
+generates the L3 persona — completing the four-layer architecture
+(L0 capture in the runtime hook layer; L1 batch extraction added in
+v0.3.0; this release closes the L2/L3 gap).
+
+### Added
+- **`buildL2L3Runners`** (`src/cli/commands/extract-l2l3-wiring.ts`, ~110 LOC):
+  Single shared LLM runner (enableTools=true, required for scene/persona
+  file ops) reused across L2 (N sessions) + L3 (1 call) per ADR-5. Model
+  resolution: `cfg.persona.model` → `cfg.llm.model`. 4 unit tests with
+  mocked `pipeline-factory` + `StandaloneLLMRunnerFactory`.
+- **L2 cursor persistence** via `CheckpointManager.getPipelineState` +
+  `mergePipelineStates` — incremental L2 extraction per session, no full
+  L1 re-scan on each scheduler tick. (Codex round 1 P2 fix: ADR-4 was
+  originally going to defer cursor to v0.3.4; codex correctly identified
+  the cost spike from repeated re-scans and the SPEC was updated before
+  any code was written.)
+- **5 new `ExtractSummary` fields**: `l2_scenes_processed`,
+  `failed_l2_sessions`, `l3_attempted`, `l3_failed`, `l3_persona_bytes?`.
+  L3 outcome inferred via `fs.stat` diff on persona.md before+after the
+  L3 call — since `L3Runner` contract is `() => Promise<void>`, strictly-
+  increased mtime+size is the only signal that an actual write happened
+  (vs. no-op / silent failure). (Codex round 1 P2 fix: original
+  `l3_persona_generated: boolean` was not inferable from the upstream
+  contract.)
+- **2 new `RunExtractOptions` test seams**: `l2RunnerOverride`,
+  `l3RunnerOverride` — mirror the v0.3.0 `l1RunnerOverride` pattern.
+- **8 new orchestration tests** in `extract.test.ts`: L2 runs/skips/fails,
+  L3 runs/skips/fails, exit code stays 0 on L2/L3 failure (ADR-2 fail-soft),
+  persona bytes inferred from filesystem when mock L3 runner writes file.
+
+### Changed
+- **PM2 scheduler kill timer**: `DEFAULT_EXTRACT_TIMEOUT_MS` 5min → 15min
+  in `claude-code-integration/scheduler.cjs`. With L1+L2+L3 chained,
+  worst-case extract on busy projects (10+ sessions) can exceed 5min —
+  the old cap would SIGTERM mid-L3 and trigger kill→retry storms.
+- **`formatExtractSummary`** stdout extended:
+  `l2_scenes=N failed_l2=N [l3=wrote-Nb|noop|fail]`.
+
+### Verified
+- **Real-LLM smoke** on populated project (`~/.claude/.claude/memory/`,
+  84 L0 turns, 1 session). With `extraction.model:
+  anthropic/claude-sonnet-4.6` (R1 fallback — Hy3 returned 0 facts from
+  this fixture, validating the earlier 80%-valid-JSON gate's tail),
+  v0.3.3 chain produced:
+  - 3 L1 facts in `vectors.db`
+  - 1 file in `scene_blocks/` (2300 bytes, Chinese title — Sonnet's L2
+    output language matches the dominant content language)
+  - 1 `persona.md` of **3364 bytes** (SPEC gate: ≥500 chars ✅)
+  - L2 cursor PERSISTED — `pipeline_states.default.last_extraction_updated_time`
+    set to ISO timestamp (codex C1 fix validated end-to-end)
+  - Wall clock: **79s** for L1+L2+L3 on 50 turns.
+- **Cost**: ~$0.10–0.30 per chained extract on 50 turns using Sonnet 4.6.
+  Hy3 native costs roughly 1/10th when fact-extraction succeeds; staying
+  on Hy3 by default, R1 fallback via single config edit.
+- Unit suite: **72 passing** (64 baseline + 8 new chain cases).
+  Scheduler `node --test`: 6/6 still green after timer bump.
+
+### Codex review
+- **Round 1 (SPEC review)** — 2 P2 findings, both fixed before any code:
+  - C1: ADR-4 had deferred L2 cursor → would cause full re-scan every
+    scheduler tick → repeated cost. Fix: persist via CheckpointManager.
+  - C2: `l3_persona_generated: boolean` not derivable from `L3Runner`'s
+    `() => Promise<void>` contract. Fix: 3-field set inferred from
+    `fs.stat` diff.
+
+### Migration
+- No breaking API changes. `RunExtractOptions` gained 2 optional override
+  fields; existing callers pass unchanged.
+- New `ExtractSummary` fields default to `0` / `false` for L1-only paths,
+  so any external consumers reading the summary keep working.
+- **Cosmetic**: stdout extract summary line is longer now — automation
+  parsing it should match by `key=value` pairs, not column positions.
+
+---
+
 ## [0.3.2] — 2026-05-16
 
 Semantic vector recall via Voyage embeddings + L1 records.

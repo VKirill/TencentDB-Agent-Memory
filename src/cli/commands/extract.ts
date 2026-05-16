@@ -13,6 +13,7 @@
  */
 
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 
 import { loadContextOrAutoInit } from "../context.js";
@@ -25,6 +26,9 @@ import {
 import { StandaloneLLMRunnerFactory } from "../../adapters/standalone/llm-runner.js";
 import type { LLMRunner } from "../../core/types.js";
 import type { IMemoryStore, L0Record } from "../../core/store/types.js";
+import type { L2Runner, L3Runner } from "../../utils/pipeline-manager.js";
+import { CheckpointManager } from "../../utils/checkpoint.js";
+import { buildL2L3Runners } from "./extract-l2l3-wiring.js";
 
 const CONVERSATIONS_SUBDIR = "conversations";
 /** Hard safety cap on per-session drain iterations (50 iters × 50 turns/iter = 2500 L0 turns per session). */
@@ -32,6 +36,12 @@ const DRAIN_HARD_CAP = 50;
 
 /** Function signature exactly matching what `createL1Runner` returns. Used to inject a fake in tests. */
 export type L1RunnerFn = (params: { sessionKey: string }) => Promise<{ processedCount: number }>;
+
+/** Test seam: identical shape to `createL2Runner` return value (v0.3.3 Task 6). */
+export type L2RunnerFn = L2Runner;
+
+/** Test seam: identical shape to `createL3Runner` return value (v0.3.3 Task 6). */
+export type L3RunnerFn = L3Runner;
 
 export interface RunExtractOptions {
   /** Project root — typically process.cwd(). */
@@ -54,6 +64,17 @@ export interface RunExtractOptions {
    * (the override is assumed self-contained). Used by extract.test.ts.
    */
   l1RunnerOverride?: L1RunnerFn;
+  /**
+   * Test seam (v0.3.3): inject an L2 runner. When provided, the wiring
+   * via `buildL2L3Runners` is skipped for L2. Required for unit tests of
+   * the L1→L2→L3 chain (real L2 runner needs OpenRouter + scene fixtures).
+   */
+  l2RunnerOverride?: L2RunnerFn;
+  /**
+   * Test seam (v0.3.3): inject an L3 runner. When provided, the wiring
+   * via `buildL2L3Runners` is skipped for L3. Required for unit tests.
+   */
+  l3RunnerOverride?: L3RunnerFn;
 }
 
 export interface ExtractSummary {
@@ -71,6 +92,32 @@ export interface ExtractSummary {
   l0_processed: number;
   /** Sessions that failed mid-extract (LLM error, etc.) — informational. */
   failed_sessions: number;
+
+  // ─── v0.3.3: L2 + L3 chain ──────────────────────────────────────────
+  /** Sessions where L2 scene extraction was attempted (post-L1, non-failed L1 sessions). */
+  l2_scenes_processed: number;
+  /** Subset of l2_scenes_processed where the L2 runner threw. */
+  failed_l2_sessions: number;
+  /**
+   * True if the L3 runner was invoked (post-L2 loop). Always exactly one
+   * call per extract — L3 itself runs PersonaTrigger.shouldGenerate()
+   * internally and short-circuits when not needed (returns void without
+   * writing persona.md). So `l3_attempted=true` does NOT mean persona was
+   * regenerated; check `l3_persona_bytes` for that.
+   */
+  l3_attempted: boolean;
+  /** True if the L3 runner call threw (error from PersonaGenerator / LLM / file IO). */
+  l3_failed: boolean;
+  /**
+   * Size in bytes of persona.md AFTER the L3 call, ONLY if both mtime and
+   * size strictly increased compared to the pre-call snapshot (proxy for
+   * "L3 actually generated and wrote a new persona"). Undefined if no
+   * change detected OR persona.md absent both before and after. Codex
+   * round 1 P2 fix: L3Runner returns void for success, no-op, and silent
+   * failure alike — fs.stat diff is the only inference available without
+   * modifying the upstream contract.
+   */
+  l3_persona_bytes?: number;
 }
 
 export interface RunExtractResult {
@@ -185,6 +232,10 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
         l0_total: l0Total,
         l0_processed: 0,
         failed_sessions: 0,
+        l2_scenes_processed: 0,
+        failed_l2_sessions: 0,
+        l3_attempted: false,
+        l3_failed: false,
       },
     };
   }
@@ -198,11 +249,16 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
   };
 
   let l1Runner: L1RunnerFn;
+  // Hoisted so the v0.3.3 L2/L3 chain (post-L1) can reuse the vectorStore.
+  // Stays undefined in the override path — L2/L3 chain is then only reachable
+  // via explicit l2RunnerOverride / l3RunnerOverride.
+  let storesForChain: Awaited<ReturnType<typeof initStores>> | undefined;
   if (opts.l1RunnerOverride) {
     l1Runner = opts.l1RunnerOverride;
   } else {
     initDataDirectories(ctx.dataDir);
     const stores = await initStores(ctx.config, ctx.dataDir, logger);
+    storesForChain = stores;
 
     // ── Backfill SQLite l0_conversations from JSONL ───────────────────
     // v0.3.0 architectural bridge: capture (v0.2) writes only JSONL.
@@ -277,7 +333,98 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
     }
   }
 
+  // ═════════ v0.3.3: L2 + L3 chain (post-L1, before exit code) ═══════
+  //
+  // ADR-1: always-on chain. ADR-2: fail-soft — L2/L3 errors NEVER change
+  // exitCode (L1 is the money operation; L2/L3 retry on next scheduler tick).
+  // Skip conditions:
+  //   - dryRun (already early-returned above)
+  //   - all L1 sessions failed (failedSessions === toProcess.length)
+  //   - no L1 records produced at all (l0Processed === 0) — no new scenes possible
+  //   - no runners available (override missing AND store init was skipped via L1 override)
+  let l2ScenesProcessed = 0;
+  let failedL2Sessions = 0;
+  let l3Attempted = false;
+  let l3Failed = false;
+  let l3PersonaBytes: number | undefined;
+
+  const allL1Failed = toProcess.length > 0 && failedSessions === toProcess.length;
+  const noNewL1Data = l0Processed === 0;
+  const shouldRunChain = !allL1Failed && !noNewL1Data;
+
+  if (shouldRunChain) {
+    // Build / inject L2 runner.
+    let l2Runner: L2RunnerFn | undefined = opts.l2RunnerOverride;
+    let l3Runner: L3RunnerFn | undefined = opts.l3RunnerOverride;
+
+    if ((!l2Runner || !l3Runner) && storesForChain?.vectorStore) {
+      try {
+        const bundle = buildL2L3Runners({
+          pluginDataDir: ctx.dataDir,
+          cfg: ctx.config,
+          vectorStore: storesForChain.vectorStore,
+          logger,
+        });
+        l2Runner = l2Runner ?? bundle.l2Runner;
+        l3Runner = l3Runner ?? bundle.l3Runner;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.logger.warn(`extract.l2l3.wiring: build failed: ${msg}`);
+      }
+    }
+
+    // ── L2: per-session loop with cursor persistence (codex C1 fix) ───
+    if (l2Runner) {
+      const checkpointMgr = new CheckpointManager(ctx.dataDir, logger);
+      for (const sessionKey of toProcess) {
+        try {
+          // Read latest cursor for this session (defaults to "" → undefined).
+          const cp = await checkpointMgr.read();
+          const pState = checkpointMgr.getPipelineState(cp, sessionKey);
+          const priorCursor = pState.last_extraction_updated_time || undefined;
+
+          const result = await l2Runner(sessionKey, priorCursor);
+          l2ScenesProcessed += 1;
+
+          // Persist returned latestCursor (only when L2 actually returned
+          // a result object AND advanced the cursor). Void return = no L1
+          // records processed → leave cursor untouched (incremental safe).
+          if (result && typeof result === "object" && result.latestCursor) {
+            await checkpointMgr.mergePipelineStates({
+              [sessionKey]: { ...pState, last_extraction_updated_time: result.latestCursor },
+            });
+          }
+        } catch (err) {
+          failedL2Sessions += 1;
+          const msg = err instanceof Error ? err.message : String(err);
+          ctx.logger.error(`extract.l2: session ${sessionKey} failed: ${msg}`);
+        }
+      }
+    }
+
+    // ── L3: single call, gate via filesystem mtime/size diff (codex C2 fix) ─
+    if (l3Runner) {
+      const personaPath = path.join(ctx.dataDir, "persona.md");
+      const preStat = await statSafe(personaPath);
+
+      l3Attempted = true;
+      try {
+        await l3Runner();
+      } catch (err) {
+        l3Failed = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.logger.error(`extract.l3: persona generation failed: ${msg}`);
+      }
+
+      const postStat = await statSafe(personaPath);
+      if (postStat && (!preStat || (postStat.mtimeMs > preStat.mtimeMs && postStat.size > preStat.size))) {
+        l3PersonaBytes = postStat.size;
+      }
+    }
+  }
+
   // ── Exit code: 1 only if ALL processed sessions failed ─────────────
+  // Note: L2/L3 errors are deliberately excluded from this — see ADR-2.
   const exitCode: 0 | 1 = toProcess.length > 0 && failedSessions === toProcess.length ? 1 : 0;
   return {
     ok: exitCode === 0,
@@ -287,8 +434,23 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
       l0_total: l0Total,
       l0_processed: l0Processed,
       failed_sessions: failedSessions,
+      l2_scenes_processed: l2ScenesProcessed,
+      failed_l2_sessions: failedL2Sessions,
+      l3_attempted: l3Attempted,
+      l3_failed: l3Failed,
+      l3_persona_bytes: l3PersonaBytes,
     },
   };
+}
+
+/** Stat a file; return undefined if absent or unreadable. */
+async function statSafe(p: string): Promise<{ size: number; mtimeMs: number } | undefined> {
+  try {
+    const s = await fsp.stat(p);
+    return { size: s.size, mtimeMs: s.mtimeMs };
+  } catch {
+    return undefined;
+  }
 }
 
 interface SessionEnum {
@@ -398,8 +560,12 @@ async function backfillSqliteFromJsonl(
 
 /** Format a RunExtractResult.summary for human stdout (single line). */
 export function formatExtractSummary(projectRoot: string, s: ExtractSummary): string {
+  const l3Part = s.l3_attempted
+    ? ` l3=${s.l3_failed ? "fail" : s.l3_persona_bytes !== undefined ? `wrote-${s.l3_persona_bytes}b` : "noop"}`
+    : "";
   return (
     `extract: project=${projectRoot} sessions=${s.sessions} l0_total=${s.l0_total} ` +
-    `l0_processed=${s.l0_processed} failed_sessions=${s.failed_sessions}`
+    `l0_processed=${s.l0_processed} failed_sessions=${s.failed_sessions} ` +
+    `l2_scenes=${s.l2_scenes_processed} failed_l2=${s.failed_l2_sessions}${l3Part}`
   );
 }

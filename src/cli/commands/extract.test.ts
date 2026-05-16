@@ -223,3 +223,233 @@ describe("runExtract — happy paths with injected L1 runner", () => {
     expect(r.summary?.l0_processed).toBe(100);
   });
 });
+
+// ═════════ v0.3.3 — L2 + L3 chain (SPEC §5 Tasks 7-8, §6 acceptance) ══
+//
+// All cases use injected L1+L2+L3 runners (real LLM excluded — that lives
+// in the manual smoke per SPEC Task 13).  Each case asserts both the
+// summary fields (v0.3.3 ExtractSummary extension) AND that exit code
+// stays 0 when L2/L3 misbehave (ADR-2 fail-soft).
+
+function setupChainProject(sessionKeys: string[] = ["s1"]) {
+  const projectRoot = makeTmpProject();
+  process.env.OPENROUTER_API_KEY = "sk-test";
+  // runInit done inline by caller (some cases want different cfg state)
+  return { projectRoot, sessionKeys };
+}
+
+async function initWithSessions(
+  projectRoot: string,
+  sessionKeys: string[],
+): Promise<void> {
+  await runInit({ projectRoot });
+  const jsonlPath = path.join(projectRoot, ".claude/memory/conversations/2026-05-16.jsonl");
+  writeJsonl(
+    jsonlPath,
+    sessionKeys.map((k, i) => ({
+      sessionKey: k,
+      role: "user",
+      content: "x",
+      recordedAt: `2026-05-16T10:00:0${i}Z`,
+      timestamp: i + 1,
+      id: `m${i + 1}`,
+    })),
+  );
+}
+
+describe("runExtract — v0.3.3 L2+L3 chain (injected runners)", () => {
+  it("(i) L2 runs after L1 when l0_processed > 0", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sX"]);
+
+    const l1 = vi.fn().mockResolvedValueOnce({ processedCount: 5 }).mockResolvedValue({ processedCount: 0 });
+    const l2 = vi.fn().mockResolvedValue({ latestCursor: "2026-05-16T10:00:00Z" });
+    const l3 = vi.fn().mockResolvedValue(undefined);
+
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      l2RunnerOverride: l2,
+      l3RunnerOverride: l3,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(r.exitCode).toBe(0);
+    expect(l2).toHaveBeenCalledTimes(1);
+    expect(l2).toHaveBeenCalledWith("sX", undefined);
+    expect(r.summary?.l2_scenes_processed).toBe(1);
+    expect(r.summary?.failed_l2_sessions).toBe(0);
+  });
+
+  it("(j) L2 skipped when L1 produced zero records (no point in re-scanning)", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sX"]);
+
+    // L1 returns 0 immediately → l0Processed=0 → chain skipped
+    const l1 = vi.fn().mockResolvedValue({ processedCount: 0 });
+    const l2 = vi.fn();
+    const l3 = vi.fn();
+
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      l2RunnerOverride: l2,
+      l3RunnerOverride: l3,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(l2).not.toHaveBeenCalled();
+    expect(l3).not.toHaveBeenCalled();
+    expect(r.summary?.l2_scenes_processed).toBe(0);
+    expect(r.summary?.l3_attempted).toBe(false);
+  });
+
+  it("(k) L2 failure swallowed; exit code stays 0; counter incremented", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sFail"]);
+
+    const l1 = vi.fn().mockResolvedValueOnce({ processedCount: 3 }).mockResolvedValue({ processedCount: 0 });
+    const l2 = vi.fn().mockRejectedValue(new Error("L2 boom"));
+    const l3 = vi.fn().mockResolvedValue(undefined);
+
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      l2RunnerOverride: l2,
+      l3RunnerOverride: l3,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(r.exitCode).toBe(0); // ADR-2: L2 failure does NOT bump exit code
+    expect(r.summary?.failed_l2_sessions).toBe(1);
+    expect(r.summary?.l2_scenes_processed).toBe(0); // increment is in success branch only
+    // L3 still attempted despite L2 failure
+    expect(l3).toHaveBeenCalledTimes(1);
+    expect(r.summary?.l3_attempted).toBe(true);
+  });
+
+  it("(l) L3 attempted exactly once after L2 loop; l3_attempted=true", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sA", "sB"]);
+
+    const l1 = vi
+      .fn()
+      .mockImplementation(({ sessionKey }: { sessionKey: string }) => {
+        // each session: one batch of 4 then drain stop
+        // simple stateful per-call: use call count as proxy
+        return Promise.resolve({ processedCount: sessionKey === "sA" ? 4 : 2 });
+      });
+    // Need to make drain terminate — use sequential mock
+    l1.mockReset();
+    l1.mockResolvedValueOnce({ processedCount: 4 })  // sA iter 1
+      .mockResolvedValueOnce({ processedCount: 0 })  // sA iter 2 (stop)
+      .mockResolvedValueOnce({ processedCount: 2 })  // sB iter 1
+      .mockResolvedValueOnce({ processedCount: 0 }); // sB iter 2 (stop)
+
+    const l2 = vi.fn().mockResolvedValue({ latestCursor: "c1" });
+    const l3 = vi.fn().mockResolvedValue(undefined);
+
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      l2RunnerOverride: l2,
+      l3RunnerOverride: l3,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(l3).toHaveBeenCalledTimes(1); // ADR-3: once per extract
+    expect(l2).toHaveBeenCalledTimes(2); // once per session
+    expect(r.summary?.l3_attempted).toBe(true);
+  });
+
+  it("(m) L3 NOT attempted when chain skipped (all L1 failed)", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sBad"]);
+
+    const l1 = vi.fn().mockRejectedValue(new Error("L1 dead"));
+    const l2 = vi.fn();
+    const l3 = vi.fn();
+
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      l2RunnerOverride: l2,
+      l3RunnerOverride: l3,
+    });
+
+    // L1 failure → exit 1 (all sessions failed)
+    expect(r.exitCode).toBe(1);
+    expect(l2).not.toHaveBeenCalled();
+    expect(l3).not.toHaveBeenCalled();
+    expect(r.summary?.l3_attempted).toBe(false);
+  });
+
+  it("(n) L3 failure swallowed; l3_failed=true; exit code stays 0", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sX"]);
+
+    const l1 = vi.fn().mockResolvedValueOnce({ processedCount: 7 }).mockResolvedValue({ processedCount: 0 });
+    const l2 = vi.fn().mockResolvedValue({ latestCursor: "c1" });
+    const l3 = vi.fn().mockRejectedValue(new Error("L3 boom"));
+
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      l2RunnerOverride: l2,
+      l3RunnerOverride: l3,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(r.exitCode).toBe(0); // ADR-2: L3 failure swallowed
+    expect(r.summary?.l3_attempted).toBe(true);
+    expect(r.summary?.l3_failed).toBe(true);
+    expect(r.summary?.l3_persona_bytes).toBeUndefined();
+  });
+
+  it("(o) l3_persona_bytes populated when persona.md grows (mtime+size diff)", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sX"]);
+
+    const personaPath = path.join(projectRoot, ".claude/memory/persona.md");
+    // pre-state: empty (file absent)
+    const l1 = vi.fn().mockResolvedValueOnce({ processedCount: 5 }).mockResolvedValue({ processedCount: 0 });
+    const l2 = vi.fn().mockResolvedValue({ latestCursor: "c1" });
+    const l3 = vi.fn().mockImplementation(async () => {
+      // Simulate L3 writing persona.md
+      fs.writeFileSync(
+        personaPath,
+        "# Persona\n\n" + "Some generated content. ".repeat(50),
+      );
+    });
+
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      l2RunnerOverride: l2,
+      l3RunnerOverride: l3,
+    });
+
+    expect(r.ok).toBe(true);
+    expect(r.summary?.l3_attempted).toBe(true);
+    expect(r.summary?.l3_failed).toBe(false);
+    expect(r.summary?.l3_persona_bytes).toBeGreaterThan(500);
+  });
+
+  it("(p) summary fields default to 0/false when chain doesn't run", async () => {
+    const { projectRoot } = setupChainProject();
+    await initWithSessions(projectRoot, ["sX"]);
+
+    const l1 = vi.fn().mockResolvedValue({ processedCount: 0 }); // no L1 work
+    const r = await runExtract({
+      projectRoot,
+      l1RunnerOverride: l1,
+      // No l2/l3 overrides — but chain skipped due to l0_processed=0 anyway
+    });
+
+    expect(r.summary?.l2_scenes_processed).toBe(0);
+    expect(r.summary?.failed_l2_sessions).toBe(0);
+    expect(r.summary?.l3_attempted).toBe(false);
+    expect(r.summary?.l3_failed).toBe(false);
+    expect(r.summary?.l3_persona_bytes).toBeUndefined();
+  });
+});
