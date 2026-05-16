@@ -94,9 +94,9 @@ Phase A acceptance includes a real-LLM Hy3 smoke (Task A11): 5-10 fixture turns 
 
 | # | Action | Acceptance |
 |---|---|---|
-| **A3** | 🟢 `src/cli/commands/extract.ts` (~180 lines): `runExtract({projectRoot, dryRun, maxTurns})`. Steps: loadContextOrAutoInit → preflight checks (config, key, enabled flag) → construct `ClaudeCodeHostAdapter` + `TdaiCore` → `await core.initialize()` → enumerate unique sessionKeys from `<dataDir>/conversations/*.jsonl` → per-sessionKey: get wired L1 runner via `core.getInternalPipelineState()` (or expose a getter), call with `{sessionKey}` → aggregate counts → emit single-line stdout summary | A1 tests green |
+| **A3** | 🟢 `src/cli/commands/extract.ts` (~220 lines): `runExtract({projectRoot, dryRun, maxSessions})`. Steps: loadContextOrAutoInit → preflight checks (config, key, enabled flag) → construct `ClaudeCodeHostAdapter` + `TdaiCore` → `await core.initialize()` → enumerate unique sessionKeys from `<dataDir>/conversations/*.jsonl` → per-sessionKey: **drain loop** — repeatedly call wired L1 runner with `{sessionKey}` until `processedCount === 0` or hard safety cap (50 iterations = 2500 L0 turns per session); each iteration processes ≤50 messages and advances cursor. **P1 codex round 2 fix**: prevents the "older turns fall behind cursor when session has >50 unextracted L0" data-loss bug — upstream `readConversationMessagesGroupedBySessionId` keeps only newest 50, then `pipeline-factory` advances cursor to max recordedAtMs of those 50. Without draining, turns 51+ from any session are permanently skipped. → aggregate counts across all sessions+iterations → emit single-line stdout summary | A1 tests green; cursor advances correctly between iterations (verified via A6) |
 | **A4** | ✏️ `src/cli/index.ts` — wire `extract` subcommand: `--dry-run` (boolean), `--max-sessions <n>` (number, default 0 = no cap, applied at extract.ts loop level). Inherits global `--platform`/`--auto-init`. Exit code logic per §3 A4. **`--max-turns` removed from SPEC** (per-session L0 batch already capped at 50 in upstream `readConversationMessagesGroupedBySessionId`; introducing per-turn slicing would require touching `pipeline-factory.ts` upstream code — out of v0.3.0 scope). | E2E manual: `cd <tmp> && claude-mem init && claude-mem extract --dry-run` = exits 0, prints `l0_total=0 l1_new=0` |
-| **A5** | ➕ `tests/integration/extract.integration.test.ts` (~120 lines): tmp project, fixture L0 JSONL (3 turns) → run `runExtract` with mocked `LLMRunnerFactory` returning fixed valid L1 JSON → assert `vectors.db` has rows in `memory_records` table → stdout summary matches regex | Tests green |
+| **A5** | ➕ `tests/integration/extract.integration.test.ts` (~140 lines): tmp project, fixture L0 JSONL (mixed: 3 turns in session A, 60 turns in session B — to verify drain loop processes >50). Run `runExtract` with mocked `LLMRunnerFactory` returning fixed valid L1 JSON → assert `vectors.db` has rows in **`l1_records`** table → assert session-B rows > 50 (drain works) → stdout summary matches regex `extract: project=.+ sessions=2 l0_total=63 l1_new=63 l1_skipped=0`. **Also extend `vitest.config.ts` include glob to add `tests/**/*.test.ts`** (currently only `src/**/*.test.ts` + `__tests__/**/*.test.ts` — would silently skip `tests/integration/`). | Tests green; session-B drain verified |
 | **A6** | ✏️ Cursor advancement verification: write small smoke test that runs `runExtract` twice on same fixture, asserts second run reports `l1_new=0` | Idempotency proven |
 
 ### Phase 2 — Wrapper env loading (4 commits)
@@ -162,4 +162,13 @@ Q1 (L0 layout) resolved by orchestrator inline (flat date-bucketed JSONL, verifi
 | C3 | A14 ran `npm run lint && npm run typecheck && npm run test:integration` but only `lint:gate` + `test` exist in package.json | Added `test:integration` script to A14; documented why `lint`/`typecheck` intentionally skipped (upstream `as any` noise) |
 | C4 | Acceptance #4 said dry-run on fresh tmp dir exits 0, but §3 A4 says no config = exit 1 (contradictory) | Acceptance now requires `claude-mem init` first. Dry-run honors config-required check. |
 
-Round 2 codex runs after this commit.
+### Round 2 (2026-05-16) — 1 P1 + 3 P2, all fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| C5 (P1) | Sessions with >50 unextracted L0 turns: data loss. Upstream reader keeps only newest 50, then advances cursor → turns 51+ permanently skipped | **A3 now specifies drain loop**: per-session, call L1 runner repeatedly until `processedCount===0` (hard cap 50 iters = 2500 turns safety). A5 integration test extended: session B with 60 turns proves drain works. |
+| C6 | A3 still said `runExtract({…maxTurns})` after C2 rename | Updated A3 signature to `maxSessions` consistently |
+| C7 | `vitest.config.ts` only includes `src/**/*.test.ts` + `__tests__/**/*.test.ts` — new `tests/integration/*` would be silently skipped | A5 now includes "extend vitest.config.ts glob to add `tests/**/*.test.ts`" |
+| C8 | A5 still said assert rows in `memory_records` (C1 only fixed §1 + acceptance #5) | A5 now says `l1_records` |
+
+All round 2 findings fixed. Per orchestrator policy (max 2 SPEC review rounds), no round 3 unless implementation surfaces new defects.
