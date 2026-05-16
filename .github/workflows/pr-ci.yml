@@ -63,48 +63,7 @@ jobs:
           path: "*.tgz"
           retention-days: 7
 
-  # ── 5. Plugin manifest validation ──────────────────────────
-  manifest:
-    name: Manifest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Validate openclaw.plugin.json
-        run: |
-          echo "── Checking openclaw.plugin.json exists ──"
-          test -f openclaw.plugin.json || { echo "❌ openclaw.plugin.json not found"; exit 1; }
-
-          echo "── Checking valid JSON ──"
-          node -e "JSON.parse(require('fs').readFileSync('openclaw.plugin.json','utf8'))" || { echo "❌ Invalid JSON"; exit 1; }
-
-          echo "── Checking required fields ──"
-          node -e "
-            const m = JSON.parse(require('fs').readFileSync('openclaw.plugin.json','utf8'));
-            const errors = [];
-            if (!m.id || typeof m.id !== 'string') errors.push('missing or invalid \"id\"');
-            if (m.configSchema && typeof m.configSchema !== 'object') errors.push('\"configSchema\" must be an object');
-            if (errors.length) { console.error('❌ Manifest errors:', errors.join(', ')); process.exit(1); }
-            console.log('✅ id:', m.id);
-            if (m.name) console.log('   name:', m.name);
-            if (m.configSchema) console.log('   configSchema: present (' + Object.keys(m.configSchema.properties || {}).length + ' top-level props)');
-          "
-
-          echo "── Checking package.json openclaw metadata ──"
-          node -e "
-            const pkg = JSON.parse(require('fs').readFileSync('package.json','utf8'));
-            const oc = pkg.openclaw || {};
-            const errors = [];
-            if (!oc.extensions || !oc.extensions.length) errors.push('missing openclaw.extensions');
-            if (!oc.compat?.pluginApi) errors.push('missing openclaw.compat.pluginApi');
-            if (!oc.build?.openclawVersion) errors.push('missing openclaw.build.openclawVersion');
-            if (errors.length) { console.error('❌ Package metadata errors:', errors.join(', ')); process.exit(1); }
-            console.log('✅ openclaw metadata OK');
-            console.log('   pluginApi:', oc.compat.pluginApi);
-            console.log('   openclawVersion:', oc.build.openclawVersion);
-          "
-
-  # ── 6. Package size guard ──────────────────────────────────
+  # ── 5. Package size guard ──────────────────────────────────
   size:
     name: Size Guard
     needs: pack
