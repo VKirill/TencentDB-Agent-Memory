@@ -9,6 +9,70 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.4.3] — 2026-05-17
+
+Critical bug fix: MCP registration now writes to the correct file (`~/.claude.json`).
+
+### Fixed
+
+- **CRITICAL: MCP server written to wrong file** in v0.4.0-v0.4.2. `install.sh` wrote
+  `mcpServers.tencentdb-memory` to `~/.claude/settings.json` (Claude Code's hooks-only
+  file) instead of `~/.claude.json` (the canonical MCP registry file at HOME root that
+  Claude Code's `/mcp` UI and tool dispatch actually read). Effect: every user who
+  installed v0.4.0/v0.4.1/v0.4.2 had a non-functional MCP registration — Claude Code
+  couldn't see our server and `mcp__tencentdb-memory__*` tool calls silently failed,
+  even though `claude-mem mcp serve` booted correctly via stdio.
+- **Atomic write** to `~/.claude.json` via tmp-file + rename (prevents corruption on
+  Ctrl-C or disk full during write to this critical file).
+- **Registration includes `"type": "stdio"` field** — matches the convention of all
+  other working MCP entries (context7, gitnexus, etc.) and makes the registration
+  explicit.
+
+### Changed
+
+- MCP registration location: `~/.claude/settings.json` → `~/.claude.json` (HOME root).
+  The hooks (SessionStart, UserPromptSubmit, Stop) remain in `~/.claude/settings.json`
+  as before — that file is correct for hooks.
+- `install.sh` now auto-migrates botched installs: removes `tencentdb-memory` AND legacy
+  `claude-mem` stale entries from `~/.claude/settings.json` after writing to the correct
+  file. Both cleanup keys are handled (covers v0.4.0, v0.4.1, v0.4.2 upgrade paths).
+- `uninstall.sh` now removes MCP entries from BOTH `~/.claude.json` and
+  `~/.claude/settings.json` for backward compatibility (covers users uninstalling any
+  of v0.4.0-v0.4.3).
+- `INSTALL.md` / `README.md` / `README.ru.md` verification snippets updated to
+  reference `~/.claude.json` instead of `~/.claude/settings.json`.
+
+### Migration
+
+Re-run `install.sh` — it migrates automatically:
+
+```bash
+bash $(npm root -g)/@vkirill/tencentdb-memory-claude-code/claude-code-integration/install.sh
+```
+
+The script will:
+1. Write `tencentdb-memory` to `~/.claude.json` (preserving all other MCP entries)
+2. Remove the stale `tencentdb-memory` entry from `~/.claude/settings.json`
+3. Remove the legacy `claude-mem` entry from `~/.claude/settings.json` (if present)
+
+After install, restart Claude Code so it re-reads `~/.claude.json`. Verify:
+
+```bash
+python3 -c "import json; print(json.load(open('$HOME/.claude.json'))['mcpServers'].get('tencentdb-memory','NOT REGISTERED'))"
+# → {'type': 'stdio', 'command': '/home/you/.npm-global/bin/claude-mem', 'args': ['mcp', 'serve']}
+```
+
+### Verified
+
+- 91/91 tests passing (no MCP server code changed).
+- `npm run build` + `npm run lint:gate` clean.
+- `claude-mem --version` = `0.4.3`.
+- Fresh install: `~/.claude.json` receives `tencentdb-memory` entry; `~/.claude/settings.json` stays clean.
+- Migration from v0.4.2 (stale entry in `settings.json`): stale entry removed, correct entry added to `~/.claude.json`, sibling MCP entries preserved.
+- Idempotency: re-run on already-correct install prints "already registered, skipping" and does not churn the file.
+
+---
+
 ## [0.4.2] — 2026-05-17
 
 Namespace-collision fix: rename MCP server identifier `claude-mem` → `tencentdb-memory`.

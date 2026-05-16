@@ -42,6 +42,36 @@ if [[ -d "$HOOKS_DIR" ]]; then
   echo "claude-mem uninstall: removed $HOOKS_DIR"
 fi
 
+# Remove MCP entries from ~/.claude.json (correct location, v0.4.3+) and
+# ~/.claude/settings.json (legacy location, v0.4.0-v0.4.2) — handles both
+# forward and backward compat.
+node -e '
+const fs = require("node:fs");
+const files = [
+  "'"$HOME"'/.claude.json",
+  "'"$HOME"'/.claude/settings.json",
+];
+for (const p of files) {
+  if (!fs.existsSync(p)) continue;
+  let s;
+  try { s = JSON.parse(fs.readFileSync(p, "utf-8")); } catch { continue; }
+  if (!s.mcpServers) continue;
+  let changed = false;
+  for (const k of ["tencentdb-memory", "claude-mem"]) {
+    if (s.mcpServers[k]) {
+      delete s.mcpServers[k];
+      console.log("claude-mem uninstall: removed " + k + " from " + p);
+      changed = true;
+    }
+  }
+  if (changed) {
+    const tmp = p + ".tmp." + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(s, null, 2));
+    fs.renameSync(tmp, p);
+  }
+}
+'
+
 # Strip claude-mem hook entries from settings.json — match by OUR paths only.
 if [[ -f "$SETTINGS_FILE" ]]; then
   TMP=$(mktemp)
@@ -58,9 +88,6 @@ if [[ -f "$SETTINGS_FILE" ]]; then
         (($binPath | length > 0) and contains($binPath))
       );
     del(._claude_mem_installed) |
-    # v0.4.2: remove both current and legacy MCP server keys
-    del(.mcpServers["tencentdb-memory"]) |
-    del(.mcpServers["claude-mem"]) |
     .hooks = (
       (.hooks // {}) |
       to_entries |
