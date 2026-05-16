@@ -9,6 +9,48 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.2.1] — 2026-05-16
+
+Hotfix: memory quality. v0.2.0 stored unusable garbage in long-term memory.
+
+### Fixed
+- **`stop-wrapper.sh` now parses transcript JSONL properly.** v0.2.0
+  raw-tailed `transcript_path` (4 KiB), which always landed on Claude
+  API metadata (`tool_use` blocks, `usage`, `cache_creation_input_tokens`)
+  instead of the actual conversation. v0.2.1 walks the JSONL newest-first,
+  extracts ONLY `type:"text"` blocks from user/assistant messages, drops
+  `tool_use`/`tool_result`/`thinking`, formats as a readable dialog
+  capped at 4 KiB. Sessions captured under v0.2.0 should be wiped — they
+  pollute recall context with API noise.
+- **PostToolUse hook removed from `settings.json.template`.** Capturing
+  raw `tool_input`/`tool_result` envelopes as user/assistant turns
+  produced opaque JSON dumps that are noise in memory and useless for
+  recall. v0.2.1 ships SessionStart + UserPromptSubmit + Stop only.
+  `capture-wrapper.sh` kept in repo for future v0.3 reuse with a
+  smarter format. install.sh removes stale `capture-wrapper.sh` on
+  upgrade.
+
+### Migration from v0.2.0
+```bash
+# 1. Pull v0.2.1 (or reinstall from tag)
+cd /path/to/TencentDB-Agent-Memory
+git pull
+npm run build
+
+# 2. Re-run install.sh to refresh settings.json + wrappers
+bash claude-code-integration/install.sh
+
+# 3. (optional but recommended) wipe v0.2.0 garbage in each project:
+find ~ -name ".claude/memory/conversations" -type d -exec rm -rf {} + 2>/dev/null
+# OR per-project: rm -rf <project>/.claude/memory/conversations
+```
+
+### Unchanged
+- All other v0.2.0 hooks, wrappers, marker shape, --auto-init, --platform,
+  install/uninstall idempotency.
+
+---
+
 ## [0.2.0] — 2026-05-16
 
 Claude Code integration: global install, per-project memory, auto-init on first use.
