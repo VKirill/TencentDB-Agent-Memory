@@ -10,3 +10,7 @@
 // Standalone adapter
 export { StandaloneHostAdapter, StandaloneLLMRunner, StandaloneLLMRunnerFactory } from "./standalone/index.js";
 export type { StandaloneHostAdapterOptions, StandaloneLLMConfig, StandaloneLLMRunnerFactoryOptions } from "./standalone/index.js";
+
+// Claude Code adapter (v0.2)
+export { ClaudeCodeHostAdapter, ClaudeCodeLLMRunnerFactory, synthesizeSessionId } from "./claude-code/index.js";
+export type { ClaudeCodeHostAdapterOptions, ClaudeCodeLLMRunnerFactoryOptions } from "./claude-code/index.js";
