@@ -10,11 +10,23 @@
 set -uo pipefail
 
 SETTINGS_FILE="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
-HOOKS_DIR="${CLAUDE_HOOKS_DIR:-$HOME/.claude/hooks/claude-mem}"
+HOOKS_DIR_DEFAULT="${CLAUDE_HOOKS_DIR:-$HOME/.claude/hooks/claude-mem}"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "claude-mem uninstall: 'jq' is required." >&2
   exit 1
+fi
+
+# Read identity from the marker so we only remove what THIS package installed.
+# Preserves coexisting v12.7.5 hooks etc. P2 fix from codex round 2:
+# prior uninstall greped /claude-mem/i and could wipe unrelated hooks.
+HOOKS_DIR="$HOOKS_DIR_DEFAULT"
+BIN_PATH=""
+if [[ -f "$SETTINGS_FILE" ]]; then
+  MARKER_HOOKS=$(jq -r '._claude_mem_installed.hooksDir // empty' "$SETTINGS_FILE" 2>/dev/null || true)
+  MARKER_BIN=$(jq -r '._claude_mem_installed.binPath // empty' "$SETTINGS_FILE" 2>/dev/null || true)
+  if [[ -n "$MARKER_HOOKS" ]]; then HOOKS_DIR="$MARKER_HOOKS"; fi
+  if [[ -n "$MARKER_BIN" ]]; then BIN_PATH="$MARKER_BIN"; fi
 fi
 
 # Remove wrapper dir (data dirs untouched).
@@ -23,12 +35,21 @@ if [[ -d "$HOOKS_DIR" ]]; then
   echo "claude-mem uninstall: removed $HOOKS_DIR"
 fi
 
-# Strip claude-mem hook entries from settings.json.
+# Strip claude-mem hook entries from settings.json — match by OUR paths only.
 if [[ -f "$SETTINGS_FILE" ]]; then
   TMP=$(mktemp)
   trap 'rm -f "$TMP"' EXIT
 
-  jq '
+  jq \
+    --arg hooksDir "$HOOKS_DIR" \
+    --arg binPath "$BIN_PATH" '
+    def isOurs:
+      .hooks // [] |
+      all(
+        . | (.command // "") |
+        (contains($hooksDir)) or
+        (($binPath | length > 0) and contains($binPath))
+      );
     del(._claude_mem_installed) |
     .hooks = (
       (.hooks // {}) |
@@ -36,10 +57,7 @@ if [[ -f "$SETTINGS_FILE" ]]; then
       map(
         .value = [
           .value[] |
-          select(
-            .hooks // [] |
-            all(. | (.command // "") | test("claude-mem|/claude-mem/"; "i") | not)
-          )
+          select(isOurs | not)
         ]
       ) |
       map(select(.value | length > 0)) |

@@ -62,10 +62,11 @@ mkdir -p "$HOOKS_DIR"
 # ── Conflict detection: claude-mem v12.7.5 ───────────────────────────
 
 if [[ -f "$SETTINGS_FILE" ]]; then
-  # Look for any "claude-mem" string in settings.json that isn't our marker
+  # Look for any "claude-mem" string in settings.json that isn't our marker.
   EXISTING_REF=$(jq -r '
     .hooks // {} | [..|strings? | select(test("claude-mem"; "i"))] | length
   ' "$SETTINGS_FILE" 2>/dev/null || echo 0)
+  # Marker is now an object (v0.2.0+) but may be a legacy string from v0.2.0-dev.
   EXISTING_MARKER=$(jq -r '
     if has("_claude_mem_installed") then 1 else 0 end
   ' "$SETTINGS_FILE" 2>/dev/null || echo 0)
@@ -78,7 +79,18 @@ if [[ -f "$SETTINGS_FILE" ]]; then
   fi
 fi
 
-# ── Copy wrappers + chmod +x ─────────────────────────────────────────
+# ── Copy wrappers + bake CLAUDE_MEM_BIN default + chmod +x ──────────
+#
+# Wrappers fall back to bare `claude-mem` when $CLAUDE_MEM_BIN is unset.
+# Claude Code spawn shells may have an empty / minimal PATH, so we bake
+# the resolved absolute bin into each copied wrapper as the default.
+# P1 fix from codex round 2 — round 1 finding addressed: hooks would
+# silently fail in non-interactive shells.
+
+# Escape the bin path for safe use in sed RHS (only / and & need escaping
+# when delimiter is |). Single quotes preserved literally — bash heredoc
+# below uses double quotes for the wrapper variable expansion.
+BIN_ESC="$(printf '%s' "$CLAUDE_MEM_BIN" | sed 's/[|&]/\\&/g')"
 
 for w in recall-wrapper.sh capture-wrapper.sh stop-wrapper.sh; do
   src="$TEMPLATES_DIR/$w"
@@ -86,10 +98,12 @@ for w in recall-wrapper.sh capture-wrapper.sh stop-wrapper.sh; do
     echo "claude-mem install: missing wrapper template $src" >&2
     exit 1
   fi
-  cp "$src" "$HOOKS_DIR/$w"
+  # Substitute the default for CLAUDE_MEM_BIN — keep env override possible
+  # (the read-into-array still picks up an exported CLAUDE_MEM_BIN).
+  sed "s|CLAUDE_MEM_BIN:-claude-mem|CLAUDE_MEM_BIN:-${BIN_ESC}|g" "$src" > "$HOOKS_DIR/$w"
   chmod +x "$HOOKS_DIR/$w"
 done
-echo "claude-mem install: wrappers installed to $HOOKS_DIR"
+echo "claude-mem install: wrappers installed to $HOOKS_DIR (with bin baked)"
 
 # ── Resolve template placeholders ────────────────────────────────────
 
@@ -138,7 +152,8 @@ HOOKS_DIR_ESCAPED="$(printf '%s' "$HOOKS_DIR" | sed 's/[\/&]/\\&/g')"
 jq \
   --slurpfile new "$RESOLVED_TPL" \
   --argjson allowCoexist "$ALLOW_COEXIST" \
-  --arg hooksDir "$HOOKS_DIR" '
+  --arg hooksDir "$HOOKS_DIR" \
+  --arg binPath "$CLAUDE_MEM_BIN" '
   . as $existing |
   ($new[0]._claude_mem_installed) as $newMarker |
   (
@@ -146,6 +161,16 @@ jq \
     ($new[0].hooks // {}) as $nh |
     [($eh|keys_unsorted), ($nh|keys_unsorted)] | add | unique
   ) as $events |
+  # An entry counts as "ours" iff EVERY hook command in it references our
+  # wrapper dir OR our resolved bin. SessionStart command uses bin
+  # directly; other 3 use wrapper dir. P2 fix codex round 2: prior
+  # filter only matched wrapperDir → SessionStart duplicated on reinstall.
+  def isOurs:
+    .hooks // [] |
+    all(
+      . | (.command // "") |
+      (contains($hooksDir)) or (contains($binPath))
+    );
   $existing
   | ._claude_mem_installed = $newMarker
   | .hooks = (
@@ -155,17 +180,9 @@ jq \
             (($existing.hooks // {})[$evt] // []) as $existingEntries |
             (($new[0].hooks // {})[$evt] // []) as $newEntries |
             (
-              # Drop only our prior install (entries whose command starts
-              # with the resolved wrapper dir or is the resolved bin used
-              # in SessionStart). In coexist mode, drop nothing.
               [
                 $existingEntries[]
-                | select(
-                    ($allowCoexist == 1) or (
-                      .hooks // [] |
-                      all(. | (.command // "") | contains($hooksDir) | not)
-                    )
-                  )
+                | select(($allowCoexist == 1) or (isOurs | not))
               ] as $keptExisting |
               $keptExisting + $newEntries
             )

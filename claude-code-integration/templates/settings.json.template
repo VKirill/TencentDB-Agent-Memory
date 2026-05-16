@@ -1,5 +1,9 @@
 {
-  "_claude_mem_installed": "<VERSION>",
+  "_claude_mem_installed": {
+    "version": "<VERSION>",
+    "binPath": "<ABS_BIN>",
+    "hooksDir": "<WRAPPER_DIR>"
+  },
   "hooks": {
     "SessionStart": [
       {
