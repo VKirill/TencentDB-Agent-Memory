@@ -142,6 +142,44 @@ else
   echo "claude-mem install: env file already at $ENV_FILE (unchanged)"
 fi
 
+# ── v0.3.1: scheduler.cjs + allowlist + PM2 instructions ────────────
+# Auto-extract daemon. We copy the script but do NOT auto-start PM2 —
+# user opts in explicitly. Allowlist starts empty (user adds projects).
+SCHEDULER_SRC="$SCRIPT_DIR/scheduler.cjs"
+SCHEDULER_DST="$HOOKS_DIR/scheduler.cjs"
+ALLOWLIST_FILE="${CLAUDE_MEM_ALLOWLIST:-$HOME/.claude/claude-mem-projects.txt}"
+ALLOWLIST_TEMPLATE="$TEMPLATES_DIR/claude-mem-projects.txt.example"
+
+if [[ -f "$SCHEDULER_SRC" ]]; then
+  cp "$SCHEDULER_SRC" "$SCHEDULER_DST"
+  chmod 0755 "$SCHEDULER_DST"
+  echo "claude-mem install: scheduler installed at $SCHEDULER_DST"
+fi
+
+if [[ ! -f "$ALLOWLIST_FILE" ]]; then
+  if [[ -f "$ALLOWLIST_TEMPLATE" ]]; then
+    cp "$ALLOWLIST_TEMPLATE" "$ALLOWLIST_FILE"
+  else
+    : > "$ALLOWLIST_FILE"  # empty file
+  fi
+  chmod 0644 "$ALLOWLIST_FILE"
+  echo "claude-mem install: created allowlist at $ALLOWLIST_FILE"
+  echo "claude-mem install: → add project paths (one absolute per line) to opt them in"
+fi
+
+if command -v pm2 >/dev/null 2>&1; then
+  echo ""
+  echo "claude-mem install: to start auto-extract daemon (every 30 min):"
+  echo "  pm2 start $SCHEDULER_DST --name claude-mem-scheduler"
+  echo "  pm2 save"
+  echo "  # logs: pm2 logs claude-mem-scheduler"
+else
+  echo ""
+  echo "claude-mem install: pm2 NOT found — install it to enable auto-extract:"
+  echo "  npm i -g pm2"
+  echo "  pm2 start $SCHEDULER_DST --name claude-mem-scheduler && pm2 save"
+fi
+
 # ── Resolve template placeholders ────────────────────────────────────
 
 TPL="$TEMPLATES_DIR/settings.json.template"

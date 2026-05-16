@@ -1,0 +1,15 @@
+# claude-mem auto-extract project allowlist.
+#
+# The PM2-supervised scheduler (claude-code-integration/scheduler.cjs)
+# reads this file every tick (default every 30 min) and runs
+# `claude-mem extract` against each listed project.
+#
+# Format: one absolute path per line. Lines beginning with `#` and
+# blank lines are ignored. Relative paths are silently skipped.
+#
+# Edit this file and uncomment / add project paths to opt them in.
+# The scheduler hot-reloads on each tick — no PM2 restart needed.
+#
+# Examples (commented out):
+# /home/ubuntu/projects/my-app
+# /home/ubuntu/apps/some-service

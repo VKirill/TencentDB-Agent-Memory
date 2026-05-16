@@ -29,6 +29,13 @@ if [[ -f "$SETTINGS_FILE" ]]; then
   if [[ -n "$MARKER_BIN" ]]; then BIN_PATH="$MARKER_BIN"; fi
 fi
 
+# v0.3.1: warn user about PM2 process before removing scheduler.cjs.
+# Allowlist file at ~/.claude/claude-mem-projects.txt is USER DATA — kept.
+if command -v pm2 >/dev/null 2>&1 && pm2 list 2>/dev/null | grep -q claude-mem-scheduler; then
+  echo "claude-mem uninstall: PM2 process 'claude-mem-scheduler' still registered."
+  echo "claude-mem uninstall: → run 'pm2 delete claude-mem-scheduler && pm2 save' to clean up"
+fi
+
 # Remove wrapper dir (data dirs untouched).
 if [[ -d "$HOOKS_DIR" ]]; then
   rm -rf "$HOOKS_DIR"
