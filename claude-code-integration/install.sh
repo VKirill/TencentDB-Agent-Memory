@@ -126,9 +126,20 @@ MERGED=$(mktemp)
 trap 'rm -f "$RESOLVED_TPL" "$MERGED"' EXIT
 
 # Build the merged JSON via jq.
-jq --slurpfile new "$RESOLVED_TPL" --argjson force "$FORCE" '
+# Merge rule:
+#   - If --allow-coexist: PRESERVE every existing entry verbatim, just
+#     append our new entries (both claude-mem flavors run in parallel).
+#   - Otherwise: filter out only entries that match THIS version's
+#     wrapper path (our prior install) so re-runs upgrade cleanly without
+#     touching other claude-mem variants. (Conflict detection above has
+#     already refused the install if non-marker claude-mem hooks were
+#     found without --allow-coexist.)
+HOOKS_DIR_ESCAPED="$(printf '%s' "$HOOKS_DIR" | sed 's/[\/&]/\\&/g')"
+jq \
+  --slurpfile new "$RESOLVED_TPL" \
+  --argjson allowCoexist "$ALLOW_COEXIST" \
+  --arg hooksDir "$HOOKS_DIR" '
   . as $existing |
-  ($existing._claude_mem_installed // null) as $prevMarker |
   ($new[0]._claude_mem_installed) as $newMarker |
   (
     ($existing.hooks // {}) as $eh |
@@ -144,15 +155,18 @@ jq --slurpfile new "$RESOLVED_TPL" --argjson force "$FORCE" '
             (($existing.hooks // {})[$evt] // []) as $existingEntries |
             (($new[0].hooks // {})[$evt] // []) as $newEntries |
             (
-              # Existing matchers we will keep
+              # Drop only our prior install (entries whose command starts
+              # with the resolved wrapper dir or is the resolved bin used
+              # in SessionStart). In coexist mode, drop nothing.
               [
                 $existingEntries[]
                 | select(
-                    .hooks // [] |
-                    all(. | (.command // "") | test("claude-mem|/claude-mem/"; "i") | not)
+                    ($allowCoexist == 1) or (
+                      .hooks // [] |
+                      all(. | (.command // "") | contains($hooksDir) | not)
+                    )
                   )
               ] as $keptExisting |
-              # New entries: append all (if --force, allow override)
               $keptExisting + $newEntries
             )
           )

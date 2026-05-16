@@ -30,11 +30,16 @@ process.stdin.on("end", () => {
   const toolName = typeof env.tool_name === "string" ? env.tool_name : "unknown";
   const sessionId = typeof env.session_id === "string" ? env.session_id : "";
   const userText = env.tool_input != null ? JSON.stringify(env.tool_input) : "";
+  // Real Claude Code PostToolUse payload field is `tool_result`. Older
+  // builds and our test fixtures use `tool_response`. Accept both.
+  const rawResult = env.tool_result != null
+    ? env.tool_result
+    : (env.tool_response != null ? env.tool_response : null);
   let assistantText = "ok";
-  if (env.tool_response != null) {
-    assistantText = typeof env.tool_response === "string"
-      ? env.tool_response
-      : JSON.stringify(env.tool_response);
+  if (rawResult != null) {
+    assistantText = typeof rawResult === "string"
+      ? rawResult
+      : JSON.stringify(rawResult);
   }
   const out = {
     user: userText,
