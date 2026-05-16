@@ -14,6 +14,7 @@
 import { Command } from "commander";
 import { runInit } from "./commands/init.js";
 import { runCapture } from "./commands/capture.js";
+import { runRecall } from "./commands/recall.js";
 
 export function buildCli(): Command {
   const program = new Command();
@@ -54,7 +55,29 @@ export function buildCli(): Command {
       process.exit(0);
     });
 
-  // Tasks 18/20 will add: recall / stats.
+  program
+    .command("recall")
+    .description("Keyword search over recorded turns; prints matches to stdout.")
+    .requiredOption("-q, --query <text>", "search query (use '-' to read from stdin)")
+    .option("-l, --limit <n>", "max number of matches", (v) => Number.parseInt(v, 10), 5)
+    .action(async (opts: { query: string; limit: number }) => {
+      let query = opts.query;
+      if (query === "-") {
+        query = await readStdinTrimmed();
+      }
+      const result = await runRecall({
+        projectRoot: process.cwd(),
+        query,
+        limit: opts.limit,
+      });
+      if (result.ok && result.text) process.stdout.write(result.text + "\n");
+      if (!result.ok) {
+        process.stderr.write(`claude-mem recall: ${result.error ?? "unknown error"}\n`);
+      }
+      process.exit(0);
+    });
+
+  // Task 20 will add: stats.
 
   return program;
 }
@@ -62,4 +85,18 @@ export function buildCli(): Command {
 export async function main(argv: string[]): Promise<void> {
   const program = buildCli();
   await program.parseAsync(argv);
+}
+
+async function readStdinTrimmed(): Promise<string> {
+  if (process.stdin.isTTY) return "";
+  const chunks: Buffer[] = [];
+  let total = 0;
+  const MAX = 1 * 1024 * 1024; // 1 MiB cap for recall query (way more than enough)
+  for await (const chunk of process.stdin) {
+    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
+    total += b.length;
+    if (total > MAX) break;
+    chunks.push(b);
+  }
+  return Buffer.concat(chunks).toString("utf-8").trim();
 }
