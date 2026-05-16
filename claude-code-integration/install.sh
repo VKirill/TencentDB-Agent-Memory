@@ -23,7 +23,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATES_DIR="$SCRIPT_DIR/templates"
 SETTINGS_FILE="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 HOOKS_DIR="${CLAUDE_HOOKS_DIR:-$HOME/.claude/hooks/claude-mem}"
-VERSION="0.2.0"
+# Read version dynamically from package.json so install.sh and package
+# stay in sync without manual bumping (v0.2.1 fix).
+PKG_JSON="$SCRIPT_DIR/../package.json"
+if [[ -f "$PKG_JSON" ]]; then
+  VERSION="$(node -e "process.stdout.write(require('$PKG_JSON').version || '0.0.0')" 2>/dev/null || echo "0.0.0")"
+else
+  VERSION="0.0.0"
+fi
 
 FORCE=0
 ALLOW_COEXIST=0
@@ -92,7 +99,10 @@ fi
 # below uses double quotes for the wrapper variable expansion.
 BIN_ESC="$(printf '%s' "$CLAUDE_MEM_BIN" | sed 's/[|&]/\\&/g')"
 
-for w in recall-wrapper.sh capture-wrapper.sh stop-wrapper.sh; do
+# v0.2.1: PostToolUse hook removed from template — tool envelopes
+# captured as opaque JSON noise, not human-readable memory.
+# capture-wrapper.sh kept in repo for future v0.3 reuse but NOT installed.
+for w in recall-wrapper.sh stop-wrapper.sh; do
   src="$TEMPLATES_DIR/$w"
   if [[ ! -f "$src" ]]; then
     echo "claude-mem install: missing wrapper template $src" >&2
@@ -103,6 +113,13 @@ for w in recall-wrapper.sh capture-wrapper.sh stop-wrapper.sh; do
   sed "s|CLAUDE_MEM_BIN:-claude-mem|CLAUDE_MEM_BIN:-${BIN_ESC}|g" "$src" > "$HOOKS_DIR/$w"
   chmod +x "$HOOKS_DIR/$w"
 done
+
+# Cleanup stale v0.2.0 capture-wrapper if upgrading.
+if [[ -f "$HOOKS_DIR/capture-wrapper.sh" ]]; then
+  rm -f "$HOOKS_DIR/capture-wrapper.sh"
+  echo "claude-mem install: removed stale capture-wrapper.sh (v0.2.0 → v0.2.1 cleanup)"
+fi
+
 echo "claude-mem install: wrappers installed to $HOOKS_DIR (with bin baked)"
 
 # ── Resolve template placeholders ────────────────────────────────────

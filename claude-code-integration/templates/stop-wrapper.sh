@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# claude-mem stop-wrapper for Stop hook (session-end summary capture)
-# Translates Claude Code's Stop envelope into capture's stdin shape.
+# claude-mem stop-wrapper for Stop hook (session-end summary capture).
 #
-# Claude Code stdin: { "session_id", "stop_hook_active", "transcript"?, ... }
-# What capture expects: { user: string, assistant: string, metadata?: {...} }
+# Claude Code Stop stdin: { session_id, stop_hook_active, transcript_path?, reason? }
+# transcript_path → JSONL file, each line:
+#   { type: "user"|"assistant"|"system"|..., message: { role, content }, ... }
+# message.content is either a STRING or an ARRAY of content blocks:
+#   { type: "text", text: "..." }       ← what we keep
+#   { type: "tool_use", ... }           ← drop
+#   { type: "tool_result", content: ... } ← drop
+#   { type: "thinking", ... }           ← drop
 #
-# Translation:
-#   user      = "session-end"
-#   assistant = transcript if available, else "[session ended]"
-#   metadata  = { sessionId, tags: ["session-summary"] }
-#
-# Synchronous (we want this to flush before Claude Code finalizes).
-# Bounded by Claude Code's 10s hook budget.
+# v0.2.0 BUG: prior version raw-tailed the JSONL file (4 KiB) → garbage
+# tool_use/usage JSON in memory. v0.2.1 fix: parse properly, keep only
+# `text` blocks from user/assistant messages, format human-readable.
 #
 # Exit 0 always.
 
@@ -30,23 +31,70 @@ process.stdin.on("end", () => {
   const sessionId = typeof env.session_id === "string" ? env.session_id : "";
   const reason = typeof env.reason === "string" ? env.reason : "";
 
-  // Real Claude Code Stop payload: { session_id, stop_hook_active,
-  // transcript_path?, reason? }. Test fixtures may use inline `transcript`.
-  // Resolution order: inline transcript → read from transcript_path → reason → fallback.
+  // Extract only the human-readable text exchange from the transcript.
+  // Drop tool_use/tool_result/thinking/system blocks — those are noise
+  // for long-term memory.
+  function extractText(messageContent) {
+    if (typeof messageContent === "string") return messageContent;
+    if (!Array.isArray(messageContent)) return "";
+    const parts = [];
+    for (const block of messageContent) {
+      if (block && block.type === "text" && typeof block.text === "string") {
+        parts.push(block.text);
+      }
+    }
+    return parts.join("\n").trim();
+  }
+
+  function parseTranscript(path) {
+    let buf;
+    try {
+      buf = fs.readFileSync(path, "utf-8");
+    } catch (err) {
+      return { ok: false, err: String((err && err.message) || err) };
+    }
+    const lines = buf.split("\n");
+    // Walk newest-first so we capture session tail (most relevant for
+    // summary) within our 4 KiB budget. Then reverse so chronological.
+    const turns = [];
+    let budget = 4096;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line) continue;
+      let obj;
+      try { obj = JSON.parse(line); } catch { continue; }
+      const msg = obj && obj.message;
+      if (!msg) continue;
+      const role = msg.role;
+      if (role !== "user" && role !== "assistant") continue;
+      const text = extractText(msg.content);
+      if (!text) continue;
+      const formatted = role + ": " + text;
+      if (formatted.length >= budget) {
+        turns.unshift(role + ": …" + text.slice(-(budget - role.length - 4)));
+        break;
+      }
+      budget -= formatted.length + 1; // +1 for newline separator
+      turns.unshift(formatted);
+      if (budget <= 0) break;
+    }
+    return { ok: true, text: turns.join("\n\n") };
+  }
+
   let assistantText = "";
+  // Test/dev fixtures may pass inline transcript (kept for back-compat)
   if (typeof env.transcript === "string" && env.transcript.length > 0) {
     assistantText = env.transcript;
   } else if (typeof env.transcript_path === "string" && env.transcript_path.length > 0) {
-    try {
-      const buf = fs.readFileSync(env.transcript_path, "utf-8");
-      // Cap at 4 KiB tail — sessions can be huge, L0 stays human-readable.
-      assistantText = buf.length > 4096 ? "…" + buf.slice(-4096) : buf;
-    } catch {
-      assistantText = `[transcript_path unreadable: ${env.transcript_path}]`;
+    const r = parseTranscript(env.transcript_path);
+    if (r.ok) {
+      assistantText = r.text;
+    } else {
+      assistantText = "[transcript_path unreadable: " + r.err + "]";
     }
   }
   if (!assistantText) {
-    assistantText = reason || "[session ended]";
+    assistantText = reason || "[session ended — no transcript content]";
   }
 
   const out = {

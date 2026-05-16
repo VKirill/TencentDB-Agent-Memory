@@ -29,18 +29,6 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "<WRAPPER_DIR>/capture-wrapper.sh",
-            "timeout": 5000
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "matcher": "*",
