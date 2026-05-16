@@ -1,6 +1,6 @@
 {
-  "name": "@vkirill/tencentdb-agent-memory",
-  "version": "0.3.6",
+  "name": "@vkirill/tencentdb-memory-claude-code",
+  "version": "0.4.0",
   "description": "Four-layer local memory (L0→L1→L2→L3) for Claude Code and other agents — SQLite vector search + OpenAI-compatible LLM/embedding providers. Forked from Tencent/TencentDB-Agent-Memory.",
   "type": "module",
   "main": "./dist/index.mjs",
@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@node-rs/jieba": "^2.0.1",
     "@tencentdb-agent-memory/tcvdb-text": "^0.1.1",
     "ai": "^6.0.164",

@@ -9,6 +9,61 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.4.0] — 2026-05-16
+
+**Major release**: MCP server + repo rebrand + README/INSTALL rewrite. The
+`MEMORY_TOOLS_GUIDE` injected into Claude's context now points to tools that
+actually exist, closing the last real Tencent-design gap.
+
+### Added
+- **MCP server** (`src/mcp/server.ts`, ~250 LOC) with 4 callable tools via
+  stdio transport:
+  - `memory_search` — vector / keyword search over L1 facts
+  - `conversation_search` — keyword search over raw L0 turns
+  - `recall_persona` — return current persona.md content
+  - `recall_scenes` — list scene blocks with summaries
+- **`claude-mem mcp serve`** CLI subcommand starts the MCP server.
+- **`src/mcp/server.test.ts`** — 8 unit tests (happy + empty path per tool).
+- **install.sh MCP wiring** — idempotently registers
+  `mcpServers.claude-mem` in `~/.claude/settings.json`.
+- **README.md** rewritten from scratch — project overview, quick start,
+  architecture diagram, MCP tools table, config reference, troubleshooting.
+- **INSTALL.md** new — step-by-step guide covering prerequisites, API keys,
+  hook wiring, PM2 daemon, smoke verification, upgrade, uninstall.
+- New dependency: `@modelcontextprotocol/sdk@^1.29.0`.
+
+### Changed
+- **Repo renamed** on GitHub: `VKirill/TencentDB-Agent-Memory` →
+  `VKirill/TencentDB-Memory-Claude-Code`. Old URLs auto-redirect.
+- **npm package renamed**: `@vkirill/tencentdb-agent-memory` →
+  `@vkirill/tencentdb-memory-claude-code`. Bin name stays `claude-mem`
+  (no user-facing CLI churn).
+- Version bumped 0.3.6 → **0.4.0** (major: new feature surface + package
+  rename).
+- `claude-mem mcp serve` is a long-running stdio process — Claude Code
+  spawns it lazily when it needs to call a memory tool.
+
+### Verified
+- Unit suite: **91 passing** (83 from v0.3.6 + 8 new MCP cases).
+- Build OK, lint:gate clean, `claude-mem --version` = `0.4.0`.
+- MCP smoke: `tools/list` over stdio returns 4 tools with correct schemas.
+- Real-LLM smoke from previous releases unchanged (persona.md regenerates
+  in coder shape; SessionStart injects `<persona-context>` / `<scene-index>`).
+
+### Migration
+- **Existing installs**: `npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.4.0`
+  (old `npm i -g github:VKirill/TencentDB-Agent-Memory#vX.Y.Z` still works
+  via GitHub auto-redirect, but use the new URL going forward).
+- Re-run `install.sh` to register the MCP server in your settings.json.
+- Restart Claude Code after the install so it picks up the new MCP entry.
+- No data migration needed — `.claude/memory/` schema unchanged.
+
+### Known issues
+- MCP SDK `Server` class shows TypeScript deprecation warning at SDK
+  v1.29.0 — non-blocking, fix tracked for next minor when SDK API stabilizes.
+
+---
+
 ## [0.3.6] — 2026-05-16
 
 `PERSONA_SYSTEM_PROMPT` rewritten from Tencent's archetype/lifestyle template
