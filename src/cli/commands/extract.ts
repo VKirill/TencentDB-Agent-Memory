@@ -24,6 +24,7 @@ import {
 } from "../../utils/pipeline-factory.js";
 import { StandaloneLLMRunnerFactory } from "../../adapters/standalone/llm-runner.js";
 import type { LLMRunner } from "../../core/types.js";
+import type { IMemoryStore, L0Record } from "../../core/store/types.js";
 
 const CONVERSATIONS_SUBDIR = "conversations";
 /** Hard safety cap on per-session drain iterations (50 iters × 50 turns/iter = 2500 L0 turns per session). */
@@ -60,8 +61,14 @@ export interface ExtractSummary {
   sessions: number;
   /** Total L0 message rows observed across all JSONL files (informational). */
   l0_total: number;
-  /** Total L1 records newly extracted this run (summed from drain iterations). */
-  l1_new: number;
+  /**
+   * Total L0 input messages the L1 runner considered across all drain
+   * iterations. NOT the count of L1 facts created — Hy3 may decide an
+   * input batch is too thin / too generic to yield individual facts
+   * (returns scene name but 0 memories). For accurate L1-row-count
+   * deltas, compare `vectors.db` `l1_records` count before/after.
+   */
+  l0_processed: number;
   /** Sessions that failed mid-extract (LLM error, etc.) — informational. */
   failed_sessions: number;
 }
@@ -133,7 +140,7 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
       summary: {
         sessions: sessionKeys.length,
         l0_total: l0Total,
-        l1_new: 0,
+        l0_processed: 0,
         failed_sessions: 0,
       },
     };
@@ -153,6 +160,24 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
   } else {
     initDataDirectories(ctx.dataDir);
     const stores = await initStores(ctx.config, ctx.dataDir, logger);
+
+    // ── Backfill SQLite l0_conversations from JSONL ───────────────────
+    // v0.3.0 architectural bridge: capture (v0.2) writes only JSONL.
+    // The L1 runner reads from SQLite l0_conversations (vectorStore.
+    // queryL0GroupedBySessionId) when vectorStore is available — and
+    // it always is here. Without this backfill, fixture/historical JSONL
+    // L0 turns are invisible to L1 → extract silently does nothing.
+    //
+    // upsertL0 is idempotent on `id` field, so re-runs are no-ops for
+    // already-bridged rows (we still pay the parse cost — minor for L0
+    // sizes; could add cursor optimization in v0.3.1 if needed).
+    if (stores.vectorStore) {
+      const upserted = await backfillSqliteFromJsonl(stores.vectorStore, convDir, logger);
+      if (upserted > 0) {
+        ctx.logger.info(`extract: backfilled ${upserted} L0 row(s) from JSONL → SQLite`);
+      }
+    }
+
     const llmRunnerInstance: LLMRunner = new StandaloneLLMRunnerFactory({
       config: {
         baseUrl: ctx.config.llm.baseUrl,
@@ -177,7 +202,7 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
   const cap = opts.maxSessions && opts.maxSessions > 0 ? opts.maxSessions : sessionKeys.length;
   const toProcess = sessionKeys.slice(0, cap);
 
-  let l1New = 0;
+  let l0Processed = 0;
   let failedSessions = 0;
 
   for (const sessionKey of toProcess) {
@@ -186,7 +211,7 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
       while (iter < DRAIN_HARD_CAP) {
         const result = await l1Runner({ sessionKey });
         const processed = result?.processedCount ?? 0;
-        l1New += processed;
+        l0Processed += processed;
         if (processed === 0) break;
         iter += 1;
       }
@@ -211,7 +236,7 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
     summary: {
       sessions: toProcess.length,
       l0_total: l0Total,
-      l1_new: l1New,
+      l0_processed: l0Processed,
       failed_sessions: failedSessions,
     },
   };
@@ -257,10 +282,75 @@ function enumerateSessions(convDir: string): SessionEnum {
   return { sessionKeys: Array.from(sessionKeys).sort(), l0Total };
 }
 
+/**
+ * Walk all JSONL files in conversations/ and upsert each L0 message into
+ * SQLite via vectorStore.upsertL0. Idempotent: upsertL0 dedupes by `id`.
+ * Returns the count of rows upserted (includes no-ops on existing rows).
+ *
+ * JSONL line shape (written by recordConversation upstream):
+ *   { sessionKey, sessionId, recordedAt, id, role, content, timestamp }
+ * L0Record shape (SQLite store):
+ *   { id, sessionKey, sessionId, role, messageText, recordedAt, timestamp }
+ * The only field rename: `content` (JSONL) → `messageText` (L0Record).
+ */
+async function backfillSqliteFromJsonl(
+  vectorStore: IMemoryStore,
+  convDir: string,
+  logger: PipelineLogger,
+): Promise<number> {
+  if (!fs.existsSync(convDir)) return 0;
+  let upserted = 0;
+  for (const entry of fs.readdirSync(convDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const filePath = path.join(convDir, entry.name);
+    let buf: string;
+    try {
+      buf = fs.readFileSync(filePath, "utf-8");
+    } catch (err) {
+      logger.warn(`extract.backfill: read ${filePath} failed: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+    for (const line of buf.split("\n")) {
+      if (!line) continue;
+      let row: {
+        id?: string;
+        sessionKey?: string;
+        sessionId?: string;
+        role?: string;
+        content?: string;
+        recordedAt?: string;
+        timestamp?: number;
+      };
+      try {
+        row = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!row.id || !row.sessionKey || !row.role || typeof row.content !== "string") continue;
+      const record: L0Record = {
+        id: row.id,
+        sessionKey: row.sessionKey,
+        sessionId: row.sessionId ?? "",
+        role: row.role,
+        messageText: row.content,
+        recordedAt: row.recordedAt ?? new Date().toISOString(),
+        timestamp: typeof row.timestamp === "number" ? row.timestamp : Date.now(),
+      };
+      try {
+        await vectorStore.upsertL0(record);
+        upserted += 1;
+      } catch (err) {
+        logger.warn(`extract.backfill: upsertL0 ${row.id} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+  return upserted;
+}
+
 /** Format a RunExtractResult.summary for human stdout (single line). */
 export function formatExtractSummary(projectRoot: string, s: ExtractSummary): string {
   return (
     `extract: project=${projectRoot} sessions=${s.sessions} l0_total=${s.l0_total} ` +
-    `l1_new=${s.l1_new} failed_sessions=${s.failed_sessions}`
+    `l0_processed=${s.l0_processed} failed_sessions=${s.failed_sessions}`
   );
 }

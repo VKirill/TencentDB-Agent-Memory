@@ -15,12 +15,12 @@ import { runInit } from "./init.js";
  *  (a) No config.json     → exit=1, error mentions 'claude-mem init'
  *  (b) Missing OPENROUTER → exit=1, error mentions OPENROUTER_API_KEY
  *  (c) extraction.enabled=false in config → exit=1, error mentions config
- *  (d) Init done but no conversations/ dir → exit=0, l0_total=0 l1_new=0
+ *  (d) Init done but no conversations/ dir → exit=0, l0_total=0 l0_processed=0
  *  (e) Init done, JSONL with 2 sessionKeys → enumeration returns both
  *  (f) --dry-run → injected L1 runner NOT called
  *  (g) --max-sessions=1 → processes only first sessionKey
  *  (h) Drain loop: injected runner returns {processedCount:50} twice then 0
- *       → counted as 100 l1_new and called 3 times (2 with work + 1 with 0)
+ *       → counted as 100 l0_processed and called 3 times (2 with work + 1 with 0)
  */
 
 const tmpDirs: string[] = [];
@@ -112,7 +112,7 @@ describe("runExtract — happy paths with injected L1 runner", () => {
     expect(r.exitCode).toBe(0);
     expect(r.summary?.sessions).toBe(0);
     expect(r.summary?.l0_total).toBe(0);
-    expect(r.summary?.l1_new).toBe(0);
+    expect(r.summary?.l0_processed).toBe(0);
   });
 
   it("(e) enumerates unique sessionKeys from flat JSONL", async () => {
@@ -191,7 +191,7 @@ describe("runExtract — happy paths with injected L1 runner", () => {
     expect(l1).toHaveBeenCalledTimes(1);
   });
 
-  it("(h) drain loop: runner returns {50,50,0} → counts 100 l1_new and 3 calls", async () => {
+  it("(h) drain loop: runner returns {50,50,0} → counts 100 l0_processed and 3 calls", async () => {
     const projectRoot = makeTmpProject();
     await runInit({ projectRoot });
     process.env.OPENROUTER_API_KEY = "sk-test";
@@ -214,6 +214,6 @@ describe("runExtract — happy paths with injected L1 runner", () => {
 
     expect(r.ok).toBe(true);
     expect(l1).toHaveBeenCalledTimes(3);
-    expect(r.summary?.l1_new).toBe(100);
+    expect(r.summary?.l0_processed).toBe(100);
   });
 });
