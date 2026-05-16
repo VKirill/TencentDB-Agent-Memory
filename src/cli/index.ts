@@ -15,6 +15,7 @@ import { Command } from "commander";
 import { runInit } from "./commands/init.js";
 import { runCapture } from "./commands/capture.js";
 import { runRecall } from "./commands/recall.js";
+import { runStats, formatStatsReport } from "./commands/stats.js";
 
 export function buildCli(): Command {
   const program = new Command();
@@ -77,7 +78,18 @@ export function buildCli(): Command {
       process.exit(0);
     });
 
-  // Task 20 will add: stats.
+  program
+    .command("stats")
+    .description("Show memory database statistics.")
+    .action(async () => {
+      const result = await runStats({ projectRoot: process.cwd() });
+      if (result.ok) {
+        process.stdout.write(formatStatsReport(result) + "\n");
+      } else {
+        process.stderr.write(`claude-mem stats: ${result.error ?? "unknown error"}\n`);
+      }
+      process.exit(0);
+    });
 
   return program;
 }
