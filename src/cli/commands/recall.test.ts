@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import type { SceneIndexEntry } from "../../core/scene/scene-index.js";
 
 import { runRecall } from "./recall.js";
 import { runInit } from "./init.js";
@@ -122,6 +123,85 @@ describe("runRecall", () => {
 
     expect(result.ok).toBe(true);
     expect(result.text).toContain("vector-bypass test");
+    expect(result.matchCount).toBeGreaterThanOrEqual(1);
+  });
+
+  // ── v0.3.5 regression tests ──────────────────────────────────────────────
+
+  it("v0.3.5: output contains <persona-context> and <scene-index> when both present", async () => {
+    const projectRoot = makeInitializedProject();
+    await runInit({ projectRoot });
+    await captureN(projectRoot, [
+      { user: "hello world query", assistant: "hello back" },
+    ]);
+
+    // Determine dataDir (mirrors loadContextOrAutoInit logic: <projectRoot>/.claude/memory)
+    const dataDir = path.join(projectRoot, ".claude", "memory");
+
+    // Write persona.md
+    fs.writeFileSync(path.join(dataDir, "persona.md"), "# Test Persona\nThis is the persona.", "utf-8");
+
+    // Write scene_index.json
+    const metaDir = path.join(dataDir, ".metadata");
+    fs.mkdirSync(metaDir, { recursive: true });
+    const sceneEntries: SceneIndexEntry[] = [
+      { filename: "my-scene.md", summary: "A test scene", heat: 5, created: "", updated: "" },
+    ];
+    fs.writeFileSync(path.join(metaDir, "scene_index.json"), JSON.stringify(sceneEntries), "utf-8");
+
+    const result = await runRecall({
+      projectRoot,
+      query: "hello",
+      limit: 5,
+      vector: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.text).toContain("<persona-context>");
+    expect(result.text).toContain("</persona-context>");
+    expect(result.text).toContain("<scene-index>");
+    expect(result.text).toContain("</scene-index>");
+    expect(result.text).toContain("<recall-matches>");
+    // Persona before scene-index before matches
+    const pIdx = result.text.indexOf("<persona-context>");
+    const sIdx = result.text.indexOf("<scene-index>");
+    const mIdx = result.text.indexOf("<recall-matches>");
+    expect(pIdx).toBeLessThan(sIdx);
+    expect(sIdx).toBeLessThan(mIdx);
+  });
+
+  it("v0.3.5: includePersona:false + includeScenes:false → no persona/scene tags in output", async () => {
+    const projectRoot = makeInitializedProject();
+    await runInit({ projectRoot });
+    await captureN(projectRoot, [
+      { user: "test query nopersona", assistant: "ack" },
+    ]);
+
+    const dataDir = path.join(projectRoot, ".claude", "memory");
+
+    // Write persona.md and scene_index.json — but they should be suppressed
+    fs.writeFileSync(path.join(dataDir, "persona.md"), "# Should Not Appear", "utf-8");
+    const metaDir = path.join(dataDir, ".metadata");
+    fs.mkdirSync(metaDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(metaDir, "scene_index.json"),
+      JSON.stringify([{ filename: "hidden.md", summary: "hidden", heat: 1, created: "", updated: "" }]),
+      "utf-8",
+    );
+
+    const result = await runRecall({
+      projectRoot,
+      query: "nopersona",
+      limit: 5,
+      vector: false,
+      includePersona: false,
+      includeScenes: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.text).not.toContain("<persona-context>");
+    expect(result.text).not.toContain("<scene-index>");
+    // matchCount is still just the L0/L1 match count
     expect(result.matchCount).toBeGreaterThanOrEqual(1);
   });
 });
