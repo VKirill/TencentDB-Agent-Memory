@@ -11,7 +11,7 @@ by **[@VKirill](https://github.com/VKirill)** · 📢 [Telegram channel: @pomoga
 
 🌐 **English** · [Русский](./README.ru.md)
 
-[![npm](https://img.shields.io/badge/npm-v0.4.1-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
+[![npm](https://img.shields.io/badge/npm-v0.4.2-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.16-brightgreen)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-server-orange)](https://modelcontextprotocol.io)
@@ -20,8 +20,6 @@ by **[@VKirill](https://github.com/VKirill)** · 📢 [Telegram channel: @pomoga
 **Keywords**: claude code memory, claude code mcp server, claude code persistent context, mcp memory server, ai agent memory, persona, vector search, voyage embeddings, openrouter, sqlite-vec, l0 l1 l2 l3 extraction
 
 </div>
-
----
 
 ---
 
@@ -56,7 +54,7 @@ and a Voyage AI API key. See [INSTALL.md](./INSTALL.md) for full details.
 
 ```bash
 # 1. Install
-npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.4.0
+npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.4.2
 
 # 2. Put your keys in ~/.claude/claude-mem.env
 cat > ~/.claude/claude-mem.env <<'EOF'
@@ -81,7 +79,7 @@ pm2 save
 Verify:
 
 ```bash
-claude-mem --version    # → 0.4.0
+claude-mem --version    # → 0.4.2
 claude-mem stats        # → memory state for the current project
 ```
 
@@ -149,7 +147,7 @@ project — by design, to keep contexts cleanly separated.
 
 ---
 
-## MCP tools (v0.4.0)
+## MCP tools (v0.4.2)
 
 Once the install script registers the MCP server in `~/.claude/settings.json`,
 Claude Code can call these tools mid-conversation:

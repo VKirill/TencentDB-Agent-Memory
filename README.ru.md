@@ -11,7 +11,7 @@
 
 🌐 [English](./README.md) · **Русский**
 
-[![npm](https://img.shields.io/badge/npm-v0.4.1-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
+[![npm](https://img.shields.io/badge/npm-v0.4.2-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.16-brightgreen)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-server-orange)](https://modelcontextprotocol.io)
@@ -20,8 +20,6 @@
 **Ключевые запросы**: claude code память, claude code mcp сервер, постоянная память claude, mcp memory, ai agent memory, persona, vector search, voyage embeddings, openrouter, sqlite-vec, l0 l1 l2 l3 extraction
 
 </div>
-
----
 
 ---
 
@@ -56,7 +54,7 @@ Claude Code отлично справляется с задачей перед �
 
 ```bash
 # 1. Установка
-npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.4.0
+npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.4.2
 
 # 2. Положи ключи в ~/.claude/claude-mem.env
 cat > ~/.claude/claude-mem.env <<'EOF'
@@ -81,7 +79,7 @@ pm2 save
 Проверка:
 
 ```bash
-claude-mem --version    # → 0.4.0
+claude-mem --version    # → 0.4.2
 claude-mem stats        # → состояние памяти текущего проекта
 ```
 
@@ -207,7 +205,7 @@ Tencent оригинально проектировал L3 как «персон
 
 ---
 
-## MCP-инструменты (v0.4.0)
+## MCP-инструменты (v0.4.2)
 
 После запуска install-скрипта MCP-сервер регистрируется в
 `~/.claude/settings.json`, и Claude Code может вызывать эти tool'ы во время
