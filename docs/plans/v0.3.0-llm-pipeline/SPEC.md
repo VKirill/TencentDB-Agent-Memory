@@ -17,9 +17,11 @@ cd ~/some-project
 claude-mem extract               # synchronous LLM call, ~3-10s
 # extract: project=/home/.../some-project sessions=2 l0_total=14 l1_new=6 l1_skipped=8
 
-sqlite3 .claude/memory/vectors.db 'SELECT COUNT(*) FROM memory_records'
+sqlite3 .claude/memory/vectors.db 'SELECT COUNT(*) FROM l1_records'
 # 6
 ```
+
+(Table name verified against `src/core/store/sqlite.ts` — Tencent uses `l1_records` for L1 facts.)
 
 ## 2. Non-Goals (v0.3.0)
 
@@ -85,7 +87,7 @@ Phase A acceptance includes a real-LLM Hy3 smoke (Task A11): 5-10 fixture turns 
 
 | # | Action | Acceptance |
 |---|---|---|
-| **A1** | 🔴 `src/cli/commands/extract.test.ts` — 6 cases: (a) no-op on empty `conversations/`; (b) walks unique sessionKeys from flat JSONL; (c) re-run after first extract → `l1_new=0`; (d) `--dry-run` returns counts without LLM calls (mock asserts 0); (e) `--max-turns 5` stops after 5; (f) all-LLM-fail → exit 1, partial-fail → exit 0 with logged warnings | Tests red; missing module |
+| **A1** | 🔴 `src/cli/commands/extract.test.ts` — 6 cases: (a) no-op on empty `conversations/`; (b) walks unique sessionKeys from flat JSONL; (c) re-run after first extract → `l1_new=0`; (d) `--dry-run` returns counts without LLM calls (mock asserts 0); (e) `--max-sessions 1` stops after 1 sessionKey processed (per-session L0 batch is already capped at 50 by upstream `readConversationMessagesGroupedBySessionId`); (f) all-LLM-fail → exit 1, partial-fail → exit 0 with logged warnings | Tests red; missing module |
 | **A2** | ➕ `claude-code-integration/templates/claude-mem.env.example` (~15 lines: placeholders + comment block + mode-0600 note) | File present |
 
 ### Phase 1 — Extract command implementation (4 commits)
@@ -93,7 +95,7 @@ Phase A acceptance includes a real-LLM Hy3 smoke (Task A11): 5-10 fixture turns 
 | # | Action | Acceptance |
 |---|---|---|
 | **A3** | 🟢 `src/cli/commands/extract.ts` (~180 lines): `runExtract({projectRoot, dryRun, maxTurns})`. Steps: loadContextOrAutoInit → preflight checks (config, key, enabled flag) → construct `ClaudeCodeHostAdapter` + `TdaiCore` → `await core.initialize()` → enumerate unique sessionKeys from `<dataDir>/conversations/*.jsonl` → per-sessionKey: get wired L1 runner via `core.getInternalPipelineState()` (or expose a getter), call with `{sessionKey}` → aggregate counts → emit single-line stdout summary | A1 tests green |
-| **A4** | ✏️ `src/cli/index.ts` — wire `extract` subcommand: `--dry-run` (boolean), `--max-turns <n>` (number, default 200). Inherits global `--platform`/`--auto-init`. Exit code logic per §3 A4. | E2E manual: `claude-mem extract --dry-run` in tmp dir = exits 0, prints `l0_total=0 l1_new=0` |
+| **A4** | ✏️ `src/cli/index.ts` — wire `extract` subcommand: `--dry-run` (boolean), `--max-sessions <n>` (number, default 0 = no cap, applied at extract.ts loop level). Inherits global `--platform`/`--auto-init`. Exit code logic per §3 A4. **`--max-turns` removed from SPEC** (per-session L0 batch already capped at 50 in upstream `readConversationMessagesGroupedBySessionId`; introducing per-turn slicing would require touching `pipeline-factory.ts` upstream code — out of v0.3.0 scope). | E2E manual: `cd <tmp> && claude-mem init && claude-mem extract --dry-run` = exits 0, prints `l0_total=0 l1_new=0` |
 | **A5** | ➕ `tests/integration/extract.integration.test.ts` (~120 lines): tmp project, fixture L0 JSONL (3 turns) → run `runExtract` with mocked `LLMRunnerFactory` returning fixed valid L1 JSON → assert `vectors.db` has rows in `memory_records` table → stdout summary matches regex | Tests green |
 | **A6** | ✏️ Cursor advancement verification: write small smoke test that runs `runExtract` twice on same fixture, asserts second run reports `l1_new=0` | Idempotency proven |
 
@@ -113,7 +115,7 @@ Phase A acceptance includes a real-LLM Hy3 smoke (Task A11): 5-10 fixture turns 
 | **A11** | 🧪 Manual Hy3 smoke (real LLM): write 5-10 representative L0 turn fixtures (PII-free synthesized dialogue, mix of code+chat), run extract against real Hy3 via OPENROUTER_API_KEY → measure valid-JSON rate. If ≥80%: keep Hy3 in config. If <80%: switch `extraction.model` to `anthropic/claude-sonnet-4.6` in `config.default.json` + document in CHANGELOG. | Smoke rate logged in CHANGELOG; config adjusted if needed |
 | **A12** | ✏️ `claude-code-integration/README.md` — document env file path/format, `claude-mem extract` manual usage, smoke test result, expected per-session token cost | README renders correctly |
 | **A13** | ✏️ `CHANGELOG.md` — `[0.3.0]` entry: Added (extract command, env file loading), Manual E2E results, Deferred (scheduler → 0.3.1, vector recall → 0.3.2) | CHANGELOG complete |
-| **A14** | ✏️ Bump `package.json` 0.2.2→0.3.0, `src/cli/index.ts` version string. `npm run lint && npm run typecheck && npm test && npm run test:integration` → all green | Final acceptance: 5 gates v0.1+v0.2 still pass + new extract gate green |
+| **A14** | ✏️ Bump `package.json` 0.2.2→0.3.0, `src/cli/index.ts` version string. **Add `package.json` script** `"test:integration": "vitest run tests/integration"` (was missing — needed for new integration test in A5). Run: `npm test && npm run test:integration && npm run build && npm run lint:gate` → all green. (Note: `typecheck` and `lint` scripts intentionally NOT added in v0.3.0 — TS errors caught by vitest+tsdown build; v0.2 had pre-existing `as any` upstream code that would noise a strict typecheck.) | Final acceptance: 5 gates v0.1+v0.2 still pass + new extract gate green |
 
 **Total: 14 commits, ~620 net new + ~95 net modified lines across 5 new + 6 modified files.**
 
@@ -122,8 +124,8 @@ Phase A acceptance includes a real-LLM Hy3 smoke (Task A11): 5-10 fixture turns 
 1. `npm test` → 8+1 (extract test) + 1 (extract.integration) suites green
 2. `bash scripts/check-no-openclaw.sh` → exits 0 (no regression)
 3. `npm run build` → produces `dist/index.mjs` cleanly
-4. `claude-mem extract --dry-run` in fresh tmp dir → exits 0, prints `l0_total=0 l1_new=0`
-5. E2E with real LLM: tmp project + 3 fixture turns + real OPENROUTER_API_KEY → `extract` writes L1 rows to `vectors.db`, re-run reports `l1_new=0`
+4. `cd <tmp> && claude-mem init && claude-mem extract --dry-run` → exits 0, prints `l0_total=0 l1_new=0` (init required first per §3 A4 — missing config.json = exit 1)
+5. E2E with real LLM: `claude-mem init` in tmp project + 3 fixture L0 turns written manually + real OPENROUTER_API_KEY in env → `claude-mem extract` writes L1 rows to `vectors.db` (verified via `sqlite3 ... 'SELECT COUNT(*) FROM l1_records'` > 0), re-run reports `l1_new=0`
 6. Wrappers source env file: install on tmp HOME with env file containing `OPENROUTER_API_KEY=test` → wrapper invocation has `OPENROUTER_API_KEY=test` in subprocess (verified via wrapper that just `echo $OPENROUTER_API_KEY > /tmp/out`)
 7. Existing v0.1+v0.2 acceptance gates (init/capture/recall/stats + install/uninstall round-trip) all still pass
 
@@ -151,4 +153,13 @@ Q1 (L0 layout) resolved by orchestrator inline (flat date-bucketed JSONL, verifi
 
 ## 9. Codex review log
 
-> Pending — `/codex:review` runs immediately after this SPEC commit (mandatory gate per Phase 2 orchestrator brief).
+### Round 1 (2026-05-16) — 4 P2 findings, all fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| C1 | SPEC referenced SQLite table `memory_records` but Tencent uses `l1_records` | Replaced in §1 example + §6 acceptance #5 |
+| C2 | `--max-turns 5` flag promised but `createL1Runner` hardcodes 50 internally (would silently ignore the flag) | Renamed to `--max-sessions` (cap at session level, not turn). Per-session L0 batch stays at upstream 50. `--max-turns` removed as out-of-scope. |
+| C3 | A14 ran `npm run lint && npm run typecheck && npm run test:integration` but only `lint:gate` + `test` exist in package.json | Added `test:integration` script to A14; documented why `lint`/`typecheck` intentionally skipped (upstream `as any` noise) |
+| C4 | Acceptance #4 said dry-run on fresh tmp dir exits 0, but §3 A4 says no config = exit 1 (contradictory) | Acceptance now requires `claude-mem init` first. Dry-run honors config-required check. |
+
+Round 2 codex runs after this commit.
