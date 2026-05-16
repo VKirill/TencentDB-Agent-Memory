@@ -1,15 +1,27 @@
+<div align="center">
+
+<img src="https://github.com/VKirill/codex-starter-kit/raw/main/assets/avatar-round.png" width="120" alt="VKirill — author avatar" />
+
 # TencentDB Memory for Claude Code
 
-> Four-layer local memory (L0 → L1 → L2 → L3) that gives Claude Code persistent
-> per-project context across sessions. Fork of [Tencent/TencentDB-Agent-Memory](https://github.com/Tencent/TencentDB-Agent-Memory),
-> reshaped for Claude Code with English prompts, a coder-focused L3 persona,
-> SessionStart auto-injection, and an MCP server.
+**Persistent per-project memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via an MCP server (4 tools) + 4-layer L0 / L1 / L2 / L3 extraction pipeline.**
+**English-localized coder-focused fork** of [Tencent/TencentDB-Agent-Memory](https://github.com/Tencent/TencentDB-Agent-Memory) — vector recall (Voyage embeddings), SessionStart auto-injection, PM2 scheduler, orchestrator sync.
 
-🌐 **Languages**: **English** · [Русский](./README.ru.md)
+by **[@VKirill](https://github.com/VKirill)** · 📢 [Telegram channel: @pomogay_marketing](https://t.me/pomogay_marketing)
 
-[![npm](https://img.shields.io/badge/npm-v0.4.0-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
+🌐 **English** · [Русский](./README.ru.md)
+
+[![npm](https://img.shields.io/badge/npm-v0.4.1-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.16-brightgreen)](https://nodejs.org)
+[![MCP](https://img.shields.io/badge/MCP-server-orange)](https://modelcontextprotocol.io)
+[![Tests](https://img.shields.io/badge/tests-91%20passing-success)](#status)
+
+**Keywords**: claude code memory, claude code mcp server, claude code persistent context, mcp memory server, ai agent memory, persona, vector search, voyage embeddings, openrouter, sqlite-vec, l0 l1 l2 l3 extraction
+
+</div>
+
+---
 
 ---
 

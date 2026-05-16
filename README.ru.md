@@ -1,17 +1,27 @@
+<div align="center">
+
+<img src="https://github.com/VKirill/codex-starter-kit/raw/main/assets/avatar-round.png" width="120" alt="VKirill — автор" />
+
 # TencentDB Memory для Claude Code
 
-> Четырёхслойная локальная память (L0 → L1 → L2 → L3), дающая Claude Code
-> постоянный контекст по каждому проекту между сессиями. Форк
-> [Tencent/TencentDB-Agent-Memory](https://github.com/Tencent/TencentDB-Agent-Memory),
-> переработанный под Claude Code: английские промпты, L3-персона
-> ориентированная на разработчиков, авто-инжекция в SessionStart и
-> MCP-сервер.
+**Постоянная память по проектам для [Claude Code](https://docs.anthropic.com/en/docs/claude-code) через MCP-сервер (4 tool'а) + 4-слойная цепочка извлечения L0 / L1 / L2 / L3.**
+**Английская локализация и L3-персона под разработчиков**. Форк [Tencent/TencentDB-Agent-Memory](https://github.com/Tencent/TencentDB-Agent-Memory) — vector recall (Voyage embeddings), авто-инжекция в SessionStart, PM2-планировщик, orchestrator-синхронизация.
 
-🌐 **Languages**: [English](./README.md) · **Русский**
+автор: **[@VKirill](https://github.com/VKirill)** · 📢 [Telegram-канал: @pomogay_marketing](https://t.me/pomogay_marketing)
 
-[![npm](https://img.shields.io/badge/npm-v0.4.0-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
+🌐 [English](./README.md) · **Русский**
+
+[![npm](https://img.shields.io/badge/npm-v0.4.1-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.16-brightgreen)](https://nodejs.org)
+[![MCP](https://img.shields.io/badge/MCP-server-orange)](https://modelcontextprotocol.io)
+[![Tests](https://img.shields.io/badge/tests-91%20passing-success)](#статус)
+
+**Ключевые запросы**: claude code память, claude code mcp сервер, постоянная память claude, mcp memory, ai agent memory, persona, vector search, voyage embeddings, openrouter, sqlite-vec, l0 l1 l2 l3 extraction
+
+</div>
+
+---
 
 ---
 
