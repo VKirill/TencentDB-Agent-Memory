@@ -14,6 +14,7 @@ import path from "node:path";
 import type { MemoryTdaiConfig } from "../config.js";
 import { parseConfig } from "../config.js";
 import { getEnv } from "../utils/env.js";
+import { runInit } from "./commands/init.js";
 
 export interface CliLogger {
   debug?: (message: string) => void;
@@ -136,4 +137,36 @@ function createFileLogger(logPath: string): CliLogger {
     warn: (msg) => write("warn", msg),
     error: (msg) => write("error", msg),
   };
+}
+
+export interface LoadOrAutoInitOptions extends LoadContextOptions {
+  /** When true and the config is missing, auto-init the project dir silently first. */
+  autoInit?: boolean;
+}
+
+/**
+ * Load context; if missing config and `autoInit` is true, bootstrap
+ * `.claude/memory/` silently first (then retry loadContext).
+ *
+ * v0.2 Claude Code hook contract: hooks pass `--auto-init` so the first
+ * SessionStart in a fresh project just works. Terminal users (no flag)
+ * still get the v0.1 error contract that tells them to run `claude-mem init`.
+ *
+ * Returns the loaded context, or throws if loading still fails after init.
+ */
+export async function loadContextOrAutoInit(opts: LoadOrAutoInitOptions): Promise<ClaudeCliContext> {
+  try {
+    return await loadContext(opts);
+  } catch (firstErr) {
+    if (!opts.autoInit) throw firstErr;
+
+    const initRes = await runInit({ projectRoot: opts.projectRoot, silent: true });
+    if (!initRes.ok) {
+      throw new Error(
+        `claude-mem: auto-init failed: ${initRes.error ?? "unknown error"} ` +
+        `(original loadContext error: ${firstErr instanceof Error ? firstErr.message : String(firstErr)})`,
+      );
+    }
+    return await loadContext(opts);
+  }
 }

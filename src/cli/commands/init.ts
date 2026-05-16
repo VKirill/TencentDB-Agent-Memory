@@ -20,6 +20,13 @@ export interface RunInitOptions {
   projectRoot: string;
   /** Overwrite existing config.json and .gitignore. Default: false. */
   force?: boolean;
+  /**
+   * Silent mode: omit result.message. Used by --auto-init from
+   * Claude Code hooks where stdout must stay clean. Creation still
+   * happens; only the human-readable message is suppressed.
+   * Errors (result.error) are NOT suppressed.
+   */
+  silent?: boolean;
 }
 
 export interface RunInitResult {
@@ -91,7 +98,9 @@ export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
         : `Initialized at ${memDir}`
       : `Already initialized at ${memDir}`;
 
-    return { ok: true, created, message: msg };
+    return opts.silent
+      ? { ok: true, created }
+      : { ok: true, created, message: msg };
   } catch (err) {
     return {
       ok: false,

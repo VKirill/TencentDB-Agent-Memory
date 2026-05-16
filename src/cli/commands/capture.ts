@@ -13,7 +13,7 @@
  * The CLI wrapper exits 0 always.
  */
 
-import { loadContext } from "../context.js";
+import { loadContextOrAutoInit } from "../context.js";
 import { recordConversation } from "../../core/conversation/l0-recorder.js";
 
 export interface CaptureStdinPayload {
@@ -33,6 +33,13 @@ export interface RunCaptureOptions {
   projectRoot: string;
   /** Pre-resolved stdin contents (test-friendly). If omitted, read from process.stdin. */
   stdin?: string;
+  /**
+   * When true and the project's .claude/memory/config.json is missing,
+   * bootstrap it silently before proceeding. Used by Claude Code hooks
+   * (--auto-init flag) so first SessionStart in a fresh project works
+   * without manual `claude-mem init`.
+   */
+  autoInit?: boolean;
 }
 
 export interface RunCaptureResult {
@@ -47,7 +54,7 @@ const DEFAULT_SESSION_KEY = "default";
 export async function runCapture(opts: RunCaptureOptions): Promise<RunCaptureResult> {
   let ctx;
   try {
-    ctx = await loadContext({ projectRoot: opts.projectRoot });
+    ctx = await loadContextOrAutoInit({ projectRoot: opts.projectRoot, autoInit: opts.autoInit });
   } catch (err) {
     // No config — we can't write to <dataDir>/conversations
     return {
