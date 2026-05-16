@@ -276,7 +276,9 @@ jq \
     .hooks // [] |
     all(
       . | (.command // "") |
-      (contains($hooksDir)) or (contains($binPath))
+      (contains($hooksDir))
+      or (contains($binPath))
+      or (contains("claude-mem-projects.txt"))
     );
   $existing
   | ._claude_mem_installed = $newMarker

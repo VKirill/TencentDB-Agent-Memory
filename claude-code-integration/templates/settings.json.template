@@ -11,6 +11,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "P=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; mkdir -p \"$HOME/.claude\" && touch \"$HOME/.claude/claude-mem-projects.txt\" && grep -qxF \"$P\" \"$HOME/.claude/claude-mem-projects.txt\" || echo \"$P\" >> \"$HOME/.claude/claude-mem-projects.txt\"",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
             "command": "<ABS_BIN> --auto-init --platform claude-code recall --query \"$(basename \"${CLAUDE_PROJECT_DIR:-$PWD}\")\" --limit 5",
             "timeout": 8000
           }
