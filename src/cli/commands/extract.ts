@@ -80,7 +80,50 @@ export interface RunExtractResult {
   error?: string;
 }
 
+/**
+ * Load OPENROUTER_API_KEY + VOYAGE_API_KEY from `~/.claude/claude-mem.env`
+ * into process.env if the file exists. Mirrors the `set -a; . file; set +a`
+ * pattern from hook wrappers — needed because terminal-invoked extract
+ * bypasses wrappers entirely. P1 fix from codex adversarial review.
+ *
+ * Lines beginning with # are skipped. Format: KEY=VALUE (no quoting,
+ * no expansion — matches `claude-mem.env.example` template).
+ */
+function loadEnvFileIntoProcess(envPath: string): void {
+  if (!fs.existsSync(envPath)) return;
+  let buf: string;
+  try {
+    buf = fs.readFileSync(envPath, "utf-8");
+  } catch {
+    return;
+  }
+  for (const rawLine of buf.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq < 1) continue;
+    const k = line.slice(0, eq).trim();
+    const v = line.slice(eq + 1).trim();
+    if (!k) continue;
+    // Don't overwrite explicit shell env (export wins over file).
+    if (process.env[k] !== undefined && process.env[k] !== "") continue;
+    process.env[k] = v;
+  }
+}
+
 export async function runExtract(opts: RunExtractOptions): Promise<RunExtractResult> {
+  // ── Load ~/.claude/claude-mem.env BEFORE loadContext (P1 codex fix) ─
+  // CLI invocation bypasses hook wrappers' set-a-source pattern. Without
+  // this, users following the documented setup ('keys in env file') get
+  // 'OPENROUTER_API_KEY not set' from terminal even when the file is
+  // correctly populated.
+  if (!opts.l1RunnerOverride) {
+    const home = process.env.HOME;
+    if (home) {
+      loadEnvFileIntoProcess(path.join(home, ".claude", "claude-mem.env"));
+    }
+  }
+
   // ── Preflight: config exists ────────────────────────────────────────
   let ctx;
   try {
@@ -178,6 +221,12 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
       }
     }
 
+    // P2 codex fix: honor cfg.extraction.model when set (R1 fallback
+    // configures this to e.g. anthropic/claude-sonnet-4.6 for L1 only).
+    // createRunner's modelRef option overrides config.model on a
+    // per-call basis. When extraction.model unset, falls back to
+    // cfg.llm.model (no behavior change).
+    const l1ModelRef = ctx.config.extraction.model || ctx.config.llm.model;
     const llmRunnerInstance: LLMRunner = new StandaloneLLMRunnerFactory({
       config: {
         baseUrl: ctx.config.llm.baseUrl,
@@ -185,7 +234,7 @@ export async function runExtract(opts: RunExtractOptions): Promise<RunExtractRes
         model: ctx.config.llm.model,
       },
       logger,
-    }).createRunner({ enableTools: false });
+    }).createRunner({ enableTools: false, modelRef: l1ModelRef });
 
     l1Runner = createL1Runner({
       pluginDataDir: ctx.dataDir,

@@ -31,7 +31,7 @@ function makeTmpProject(): string {
   return root;
 }
 
-const KEYS = ["OPENROUTER_API_KEY", "VOYAGE_API_KEY"];
+const KEYS = ["OPENROUTER_API_KEY", "VOYAGE_API_KEY", "HOME"];
 const originalEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -39,6 +39,12 @@ beforeEach(() => {
     originalEnv[k] = process.env[k];
     delete process.env[k];
   }
+  // Force HOME to a tmp dir with no claude-mem.env, so the P1
+  // extract-time env-file loader doesn't pull keys from the real
+  // developer's $HOME/.claude/claude-mem.env into these tests.
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "tdai-extract-home-"));
+  tmpDirs.push(tmpHome);
+  process.env.HOME = tmpHome;
 });
 
 afterEach(() => {
