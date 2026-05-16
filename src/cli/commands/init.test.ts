@@ -89,6 +89,20 @@ describe("runInit", () => {
     expect(after.embedding.provider).toBe("voyage");
   });
 
+  it("silent:true suppresses result.message (used by auto-init from hooks)", async () => {
+    const projectRoot = makeTmpProject();
+
+    const result = await runInit({ projectRoot, silent: true });
+
+    expect(result.ok).toBe(true);
+    expect(result.created).toBe(true);
+    // Hooks must not pollute stdout — silent mode omits message
+    expect(result.message).toBeUndefined();
+
+    // But layout still created
+    expect(fs.existsSync(path.join(projectRoot, ".claude", "memory", "config.json"))).toBe(true);
+  });
+
   it("returns ok=true with error string when target cannot be created (hook discipline)", async () => {
     // Point at a path under a non-existent parent inside an unwritable location
     // (we use a file path treated as a dir — open() will fail under it).
