@@ -72,9 +72,12 @@ Initial fork from upstream `v0.3.4`.
   and `src/core/tdai-core.ts` (whitelisted). Standalone-mode runtime
   always passes `undefined` and uses `llmRunner` instead.
 
-### Test plan (manual, before declaring v0.1 done)
-- [ ] `npm install && npm run build && npm test` — green on Node 22 + 24
-- [ ] `bash scripts/check-no-openclaw.sh` — exits 0
-- [ ] `node bin/claude-mem.mjs init` in a tmp dir creates expected layout
-- [ ] `capture` → `stats` → non-zero L0 count
-- [ ] `recall` returns at least the captured turn
+### Acceptance gates — ALL ✅ 2026-05-16
+- [x] `npm install && npm run build && npm test` — 28 tests across 7 files, green
+- [x] `bash scripts/check-no-openclaw.sh` — exits 0 (253→0 non-whitelisted refs)
+- [x] `node bin/claude-mem.mjs init` in tmp dir → creates `.claude/memory/{config.json,.gitignore}`
+- [x] `echo '{"user":"hi","assistant":"hello"}' | claude-mem capture` → L0 JSONL (2 messages)
+- [x] `claude-mem stats` → `L0 turns: 1, L0 messages: 2, last capture: <ISO ts>`
+- [x] `claude-mem recall --query <substring>` → returns matching turn (verified Task 18 e2e)
+
+v0.1 SHIPPED. Branch `feat/v0.1-decouple-and-cli` ready for PR / merge / leave.
