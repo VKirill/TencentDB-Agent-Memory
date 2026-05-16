@@ -24,7 +24,7 @@ export function buildCli(): Command {
   program
     .name("claude-mem")
     .description("Four-layer local memory for Claude Code and other agents.")
-    .version("0.2.2")
+    .version("0.3.0")
     .option("--auto-init", "auto-bootstrap .claude/memory/ on first use (for hook invocation)", false)
     .option(
       "--platform <name>",
