@@ -60,3 +60,4 @@ src/utils/clean-context-runner.ts
 # documents the wiring choice (avoid TdaiCore's openclaw branch).
 # Both are runtime-safe in standalone mode.
 src/cli/commands/extract.ts
+src/cli/commands/extract-l2l3-wiring.ts
