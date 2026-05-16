@@ -23,7 +23,7 @@ fi
 
 # Split CLAUDE_MEM_BIN on whitespace so "node /path/bin.mjs" works in dev
 # while a single absolute path (production install.sh output) also works.
-read -ra CLAUDE_MEM_CMD <<< "${CLAUDE_MEM_BIN:-claude-mem}"
+read -ra CLAUDE_MEM_CMD <<< "${CLAUDE_MEM_BIN:-tencentdb-mem}"
 
 # Read all of stdin (small JSON, bounded by Claude Code's hook contract).
 INPUT="$(cat 2>/dev/null || true)"

@@ -1,11 +1,11 @@
 {
   "name": "@vkirill/tencentdb-memory-claude-code",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Four-layer local memory (L0\u2192L1\u2192L2\u2192L3) for Claude Code and other agents \u2014 SQLite vector search + OpenAI-compatible LLM/embedding providers. Forked from Tencent/TencentDB-Agent-Memory.",
   "type": "module",
   "main": "./dist/index.mjs",
   "bin": {
-    "claude-mem": "./bin/claude-mem.mjs"
+    "tencentdb-mem": "./bin/tencentdb-mem.mjs"
   },
   "exports": {
     ".": {

@@ -55,16 +55,41 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-CLAUDE_MEM_BIN="$(command -v claude-mem || true)"
+CLAUDE_MEM_BIN="${CLAUDE_MEM_BIN:-$(command -v tencentdb-mem || true)}"
 if [[ -z "$CLAUDE_MEM_BIN" ]]; then
-  echo "claude-mem install: 'claude-mem' bin not found on PATH." >&2
-  echo "  Install first: npm i -g github:VKirill/TencentDB-Agent-Memory" >&2
+  echo "claude-mem install: 'tencentdb-mem' bin not found on PATH." >&2
+  echo "  Install first: npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.5.0" >&2
   exit 1
 fi
 echo "claude-mem install: using bin = $CLAUDE_MEM_BIN"
 
 mkdir -p "$(dirname "$SETTINGS_FILE")"
 mkdir -p "$HOOKS_DIR"
+
+# ── v0.5.0: migrate old 'claude-mem' binary references → 'tencentdb-mem' ─
+# Must run BEFORE conflict detection so the guard doesn't mistake our own
+# v0.4.x hook paths for the foreign claude-mem v12.7.5 tool.
+if [ -f "$SETTINGS_FILE" ]; then
+  if grep -q '/claude-mem' "$SETTINGS_FILE" 2>/dev/null; then
+    sed -i.bak.before-v0.5.0 's|/claude-mem |/tencentdb-mem |g; s|/claude-mem"|/tencentdb-mem"|g' "$SETTINGS_FILE"
+    echo "claude-mem install: migrated settings.json hook commands from claude-mem → tencentdb-mem"
+  fi
+fi
+node -e '
+const fs = require("node:fs");
+const p = "'"$HOME"'/.claude.json";
+if (!fs.existsSync(p)) process.exit(0);
+let s;
+try { s = JSON.parse(fs.readFileSync(p, "utf-8")); } catch { process.exit(0); }
+const tdm = s.mcpServers && s.mcpServers["tencentdb-memory"];
+if (tdm && tdm.command && tdm.command.endsWith("/claude-mem")) {
+  tdm.command = tdm.command.replace(/\/claude-mem$/, "/tencentdb-mem");
+  const tmp = p + ".tmp." + process.pid;
+  fs.writeFileSync(tmp, JSON.stringify(s, null, 2));
+  fs.renameSync(tmp, p);
+  console.log("claude-mem install: migrated ~/.claude.json MCP command to tencentdb-mem");
+}
+'
 
 # ── Conflict detection: claude-mem v12.7.5 ───────────────────────────
 

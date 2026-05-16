@@ -5,7 +5,7 @@
 //   1. Read allowlist ~/.claude/claude-mem-projects.txt (hot-reload per tick)
 //   2. For each absolute project path:
 //      a. acquireLock(<project>/.claude/memory/.extract.lock)
-//      b. spawn `claude-mem extract` with cwd: project, 15-min kill timer
+//      b. spawn `tencentdb-mem extract` with cwd: project, 15-min kill timer
 //      c. log result to <project>/.claude/memory/scheduler.log + stdout
 //      d. releaseLock
 //   3. Serial execution — never parallel (avoids LLM rate-limit storms)
@@ -14,7 +14,7 @@
 // exit 0 within 60s (hard fallback timer).
 //
 // Install via:
-//   pm2 start ~/.claude/hooks/claude-mem/scheduler.cjs --name claude-mem-scheduler
+//   pm2 start ~/.claude/hooks/claude-mem/scheduler.cjs --name tencentdb-mem-scheduler
 
 "use strict";
 
@@ -36,18 +36,18 @@ const ALLOWLIST_PATH =
   path.join(process.env.HOME || "/root", ".claude", "claude-mem-projects.txt");
 
 /**
- * Resolve `claude-mem` bin path. Priority (codex round 1 adversarial P2 fix):
- *   1. $CLAUDE_MEM_BIN env (user override)
- *   2. `command -v claude-mem` lookup on PATH (covers nvm, pnpm, /usr/local,
+ * Resolve `tencentdb-mem` bin path. Priority (codex round 1 adversarial P2 fix):
+ *   1. $CLAUDE_MEM_BIN env (user override — env var name kept for back-compat)
+ *   2. `command -v tencentdb-mem` lookup on PATH (covers nvm, pnpm, /usr/local,
  *      custom npm prefixes)
- *   3. Hard-coded ~/.npm-global/bin/claude-mem fallback (preserves v0.3.1
+ *   3. Hard-coded ~/.npm-global/bin/tencentdb-mem fallback (preserves v0.3.1
  *      pre-fix behavior on default npm-global setups)
  * Returns the resolved path or the fallback. Caller checks existence.
  */
 function resolveBinPath() {
   if (process.env.CLAUDE_MEM_BIN) return process.env.CLAUDE_MEM_BIN;
   try {
-    const out = execSync("command -v claude-mem", {
+    const out = execSync("command -v tencentdb-mem", {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
       shell: "/bin/bash",
@@ -56,7 +56,7 @@ function resolveBinPath() {
   } catch {
     // PATH lookup failed; fall through to default
   }
-  return path.join(process.env.HOME || "/root", ".npm-global", "bin", "claude-mem");
+  return path.join(process.env.HOME || "/root", ".npm-global", "bin", "tencentdb-mem");
 }
 const CLAUDE_MEM_BIN = resolveBinPath();
 
@@ -164,7 +164,7 @@ function logResult(projectPath, line) {
 }
 
 /**
- * Spawn `claude-mem extract` with cwd=projectPath, 15-min kill timer.
+ * Spawn `tencentdb-mem extract` with cwd=projectPath, 15-min kill timer.
  * Returns Promise<{ok:boolean, exitCode:number, killed:boolean}>.
  */
 function runExtractOnce(projectPath, timeoutMs) {
