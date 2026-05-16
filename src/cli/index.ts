@@ -16,6 +16,7 @@ import { runInit } from "./commands/init.js";
 import { runCapture } from "./commands/capture.js";
 import { runRecall } from "./commands/recall.js";
 import { runStats, formatStatsReport } from "./commands/stats.js";
+import { runExtract, formatExtractSummary } from "./commands/extract.js";
 
 export function buildCli(): Command {
   const program = new Command();
@@ -109,6 +110,31 @@ export function buildCli(): Command {
         process.stderr.write(`claude-mem stats: ${result.error ?? "unknown error"}\n`);
       }
       process.exit(0);
+    });
+
+  program
+    .command("extract")
+    .description("Run L1 LLM extraction over accumulated L0 turns (v0.3.0+). Requires OPENROUTER_API_KEY.")
+    .option("--dry-run", "enumerate sessionKeys but do NOT call the LLM", false)
+    .option("--max-sessions <n>", "process at most N unique sessions (0 = no cap)", (v) => Number.parseInt(v, 10), 0)
+    .action(async (subOpts: { dryRun?: boolean; maxSessions?: number }, cmd: Command) => {
+      const globals = cmd.optsWithGlobals<{ autoInit?: boolean }>();
+      const projectRoot = process.cwd();
+      const result = await runExtract({
+        projectRoot,
+        dryRun: subOpts.dryRun,
+        maxSessions: subOpts.maxSessions,
+        autoInit: globals.autoInit,
+      });
+      if (result.ok && result.summary) {
+        process.stdout.write(formatExtractSummary(projectRoot, result.summary) + "\n");
+      } else if (!result.ok) {
+        process.stderr.write(`claude-mem extract: ${result.error ?? "unknown error"}\n`);
+      }
+      // Extract is a deliberate command (not a hook) — propagate the real
+      // exit code so users / CI can detect failure. This differs from
+      // init/capture/recall/stats which always exit 0 for hook safety.
+      process.exit(result.exitCode);
     });
 
   return program;
