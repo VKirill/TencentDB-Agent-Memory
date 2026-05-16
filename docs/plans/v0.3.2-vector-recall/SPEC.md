@@ -59,7 +59,7 @@ claude-mem recall --query "foo"
 | `src/cli/commands/recall.ts` | Modified | +180/-10 | Add vector path, fallback decision tree, `--vector` plumbing; keep `composeBounded` + `formatTurn` for keyword |
 | `src/cli/commands/recall-vector.ts` | New | ~120 | `runVectorRecall(ctx, query, opts) → Promise<string[]\|null>`. Null signals fall-back. Mirrors extract.ts helper style. |
 | `src/cli/commands/recall-format.ts` | New | ~60 | `formatL1Match(result: L1SearchResult): string` — port subset of `formatMemoryLine` from `auto-recall.ts` (no L2/L3 in v0.3.2) |
-| `src/cli/commands/recall-vector.test.ts` | New | ~180 | 6 cases: happy path + 4 fallback branches + `--vector=false` short-circuit |
+| `src/cli/commands/recall-vector.test.ts` | New | ~200 | 7 cases: happy path + 4 pre-embed fallback branches + `--vector=false` short-circuit + vector-miss-empty (ADR-5 codex P2 fix) |
 | `src/cli/commands/recall.test.ts` | Modified | +30/0 | Regression: keyword unchanged when vector inactive |
 | `src/cli/index.ts` | Modified | +4/-1 | Register `--no-vector` flag on recall subcommand; thread into `runRecall({vector})` |
 | `CHANGELOG.md` | Modified | +50/0 | `[0.3.2]` entry (Added / Changed / Verified / Migration) |
@@ -73,7 +73,7 @@ claude-mem recall --query "foo"
 | # | Action | Acceptance |
 |---|---|---|
 | **1** | ➕ `src/cli/commands/recall-format.ts` — `formatL1Match(result)` minimal port from `auto-recall.formatMemoryLine`, drops L2/L3 cases | Unit test (in same commit): formats `[type] content (score)` correctly |
-| **2** | 🔴 `src/cli/commands/recall-vector.test.ts` — 6 cases with mocked IMemoryStore + EmbeddingService: (a) 3 L1 matches → formatted lines; (b) no apiKey → null; (c) countL1==0 → null; (d) isDegraded → null; (e) embed throws → null; (f) `--vector=false` skipped before embed | Test red; module missing |
+| **2** | 🔴 `src/cli/commands/recall-vector.test.ts` — 7 cases with mocked IMemoryStore + EmbeddingService: (a) 3 L1 matches → formatted lines; (b) no apiKey → null; (c) countL1==0 → null; (d) isDegraded → null; (e) embed throws → null; (f) `--vector=false` skipped before embed; (g) **vector miss (searchL1Vector returns []) → null** (codex round 1 P2 fix: ADR-5 requires empty result to flow to keyword fallback via runRecall, so runVectorRecall returns null exactly like the other fallback branches) | Test red; module missing |
 | **3** | 🟢 `src/cli/commands/recall-vector.ts` — `runVectorRecall(ctx, query, {limit, vector?})` implementing 5-branch decision tree per ADR-2. Returns formatted lines or null | Tests #2 green |
 | **4** | ✏️ `src/cli/commands/recall.ts` — extend `RunRecallOptions` with `vector?: boolean` (default true); call `runVectorRecall` first; on null fall through to existing keyword logic. Preserve composeBounded / MAX_OUTPUT_CHARS | Existing tests still green; vector path used when enabled |
 | **5** | ✏️ `src/cli/commands/recall.test.ts` — +1 regression test: `runRecall({vector: false})` returns keyword output unchanged from v0.2 | Existing 4 cases + new = 5 green |
@@ -101,4 +101,10 @@ claude-mem recall --query "foo"
 
 ## 9. Codex review log
 
-> Pending — `/codex:review` runs immediately after this SPEC commit.
+### Round 1 (2026-05-16) — 1 P2, fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| C1 (P2) | ADR-5 says empty vector result → keyword fallback, but no test case covered "embed succeeds, searchL1Vector returns []". Risk: implementation could return empty stdout for a query that had exact L0 match | Added 7th test case (g) to checklist task 2; ~200 LOC budget revised |
+
+Per orchestrator policy: max 2 SPEC review rounds.
