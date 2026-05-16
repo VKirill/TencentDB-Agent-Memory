@@ -9,6 +9,63 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.3.2] — 2026-05-16
+
+Semantic vector recall via Voyage embeddings + L1 records.
+
+### Added
+- **`runVectorRecall`** (`src/cli/commands/recall-vector.ts`, ~130 LOC):
+  5-branch upfront fallback decision tree per ADR-2 — each returns null
+  to signal "fall back to keyword". Linear happy path: Voyage embed →
+  `vectorStore.searchL1Vector` → filter by `cfg.recall.scoreThreshold ?? 0.3`
+  → slice to limit → format. 7 unit tests cover happy path + 6 fallbacks
+  (codex round 1 P2 fix added ADR-5 vector-miss case).
+- **`formatL1Match`** (`src/cli/commands/recall-format.ts`, ~70 LOC):
+  CLI-local L1 formatter `[type|scene] content (score)`. 7 unit tests.
+- **`--no-vector` CLI flag** (Commander idiom): defaults vector=true,
+  `--no-vector` forces v0.2 keyword path. Useful for debugging + speed-
+  critical scenarios.
+- **`vector?: boolean`** in `RunRecallOptions` (backward-compatible).
+
+### Changed
+- **`recall.ts` integrates vector path as primary**: `tryVectorPath` runs
+  FIRST; on null result, flows through to existing v0.2 keyword grep.
+  `composeBounded` + `MAX_OUTPUT_CHARS` preserved for both paths.
+- **Cost-aware pre-check** in `tryVectorPath`: stat `vectors.db` BEFORE
+  `initStores`. If file missing or <50KB (schema-only) → skip initStores.
+  Drops cold-call latency on empty L1 from **~2000ms → ~400ms** (4.6×).
+
+### Verified
+- **Unit tests**: 60 total, all green (added 7 vector + 7 format + 1
+  regression). 11 test files.
+- **Manual smoke** on selfystudio (32 L0, L1 empty after extract): 5
+  cold-call vector path samples = **343-437ms** (p50 ~379ms, p95 ~437ms)
+  — well under 1500ms gate. Keyword baseline 319ms.
+- **`runRecall` end-to-end**: vector path engaged → cheap pre-check
+  rejected → keyword fallback returned matching turn. Exit 0.
+
+### Codex review
+- 1 SPEC review round, 1 P2 (ADR-5 test coverage), resolved.
+
+### Deferred
+- v0.3.3: L2 scene blocks + L3 persona generation + persona injection
+- 20-call smoke against populated L1 — needs more session-history
+  accumulation; current smoke uses empty L1 (proves fallback path)
+- Hy3 truncation retry (carried from v0.3.1)
+
+### Migration from v0.3.1
+```bash
+cd /path/to/TencentDB-Agent-Memory
+git pull && npm install --ignore-scripts && npm run build
+bash claude-code-integration/install.sh   # idempotent
+# Vector recall auto-engages once L1 records exist:
+claude-mem extract                          # populate L1
+claude-mem recall --query "..."             # semantic search
+claude-mem recall --no-vector --query "..." # force keyword
+```
+
+---
+
 ## [0.3.1] — 2026-05-16
 
 PM2 auto-extract scheduler + 20-prompt Hy3 reliability gate.

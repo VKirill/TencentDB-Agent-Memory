@@ -24,7 +24,7 @@ export function buildCli(): Command {
   program
     .name("claude-mem")
     .description("Four-layer local memory for Claude Code and other agents.")
-    .version("0.3.1")
+    .version("0.3.2")
     .option("--auto-init", "auto-bootstrap .claude/memory/ on first use (for hook invocation)", false)
     .option(
       "--platform <name>",
@@ -74,7 +74,8 @@ export function buildCli(): Command {
     .description("Keyword search over recorded turns; prints matches to stdout.")
     .requiredOption("-q, --query <text>", "search query (use '-' to read from stdin)")
     .option("-l, --limit <n>", "max number of matches", (v) => Number.parseInt(v, 10), 5)
-    .action(async (subOpts: { query: string; limit: number }, cmd: Command) => {
+    .option("--no-vector", "force v0.2 keyword path; skip Voyage embed even if key present")
+    .action(async (subOpts: { query: string; limit: number; vector?: boolean }, cmd: Command) => {
       const globals = cmd.optsWithGlobals<{ autoInit?: boolean; platform?: string }>();
       let query = subOpts.query;
       if (query === "-") {
@@ -86,6 +87,7 @@ export function buildCli(): Command {
         limit: subOpts.limit,
         autoInit: globals.autoInit,
         platform: globals.platform,
+        vector: subOpts.vector,
       });
       if (result.ok && result.text) process.stdout.write(result.text + "\n");
       if (!result.ok) {
