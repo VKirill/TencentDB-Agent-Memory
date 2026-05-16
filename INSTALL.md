@@ -189,7 +189,7 @@ In the first message, ask Claude to recall something specific:
 If everything is wired:
 - Claude will see prepended context including any `<persona-context>` (your
   persona.md if it's been generated) and `<scene-index>` (scene blocks list).
-- Claude can call `mcp__claude-mem__memory_search` to find specific facts.
+- Claude can call `mcp__tencentdb-memory__memory_search` to find specific facts.
 - Stop hook saves your conversation turns to L0.
 
 On the **first session** in a fresh project, you won't see persona/scenes

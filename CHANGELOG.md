@@ -9,6 +9,57 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.4.2] — 2026-05-17
+
+Namespace-collision fix: rename MCP server identifier `claude-mem` → `tencentdb-memory`.
+
+### Fixed
+- **MCP server name collision** with the unrelated `thedotmack/claude-mem` Claude Code plugin
+  (5 cached versions found at `~/.claude/plugins/cache/thedotmack/claude-mem/`). When both
+  plugins registered MCP under similar prefixes the `/mcp` UI shadowed our server, causing tool
+  calls to silently not reach us. Server `name` field in `Server({name: ...})` is now
+  `"tencentdb-memory"`. The `mcpServers` registration key in `~/.claude/settings.json` is also
+  renamed to `tencentdb-memory`.
+- **install.sh migration** (ADR-3): on upgrade from v0.4.0/v0.4.1, the old `claude-mem` MCP key
+  is automatically removed before registering the new `tencentdb-memory` key. No orphan
+  registrations after re-running `install.sh`.
+- **uninstall.sh** (ADR-4): now removes both `tencentdb-memory` (current) AND `claude-mem`
+  (legacy) MCP keys — clean regardless of which version installed.
+
+### Migration
+
+**Users who reference our MCP tools in custom agents or slash commands must rename the prefix:**
+
+```
+# Before (v0.4.0 / v0.4.1):
+mcp__claude-mem__memory_search
+mcp__claude-mem__conversation_search
+mcp__claude-mem__recall_persona
+mcp__claude-mem__recall_scenes
+
+# After (v0.4.2):
+mcp__tencentdb-memory__memory_search
+mcp__tencentdb-memory__conversation_search
+mcp__tencentdb-memory__recall_persona
+mcp__tencentdb-memory__recall_scenes
+```
+
+Update any `~/.claude/agents/*.md` files or CLAUDE.md tool references accordingly.
+The CLI binary `claude-mem` is unchanged — all bash invocations still work as-is.
+
+Re-run `install.sh` to migrate your `~/.claude/settings.json` automatically.
+
+### Verified
+- 91/91 tests passing (server.test.ts tests handler functions only — no name assertion).
+- `npm run build` + `npm run lint:gate` clean.
+- `claude-mem --version` = `0.4.2`.
+- MCP `initialize` response: `serverInfo.name = "tencentdb-memory"`.
+- Fresh install: `settings.json` contains only `tencentdb-memory` key, no `claude-mem` key.
+- Upgrade from v0.4.1 (legacy `claude-mem` key present): key removed, `tencentdb-memory` added,
+  no duplicates.
+
+---
+
 ## [0.4.1] — 2026-05-16
 
 UX patch: eliminate the manual allowlist-append step from install.

@@ -215,10 +215,10 @@ Tencent оригинально проектировал L3 как «персон
 
 | Tool | Что делает |
 |---|---|
-| `mcp__claude-mem__memory_search` | Поиск L1-фактов по семантической близости (Voyage vector) или keyword fallback. Возвращает top-K матчей. |
-| `mcp__claude-mem__conversation_search` | Keyword-поиск по сырым L0 turn'ам. Используется для поиска точного цитирования прошлых обменов. |
-| `mcp__claude-mem__recall_persona` | Возвращает полное текущее содержимое persona.md. |
-| `mcp__claude-mem__recall_scenes` | Список всех scene-блоков с именами файлов + summaries. |
+| `mcp__tencentdb-memory__memory_search` | Поиск L1-фактов по семантической близости (Voyage vector) или keyword fallback. Возвращает top-K матчей. |
+| `mcp__tencentdb-memory__conversation_search` | Keyword-поиск по сырым L0 turn'ам. Используется для поиска точного цитирования прошлых обменов. |
+| `mcp__tencentdb-memory__recall_persona` | Возвращает полное текущее содержимое persona.md. |
+| `mcp__tencentdb-memory__recall_scenes` | Список всех scene-блоков с именами файлов + summaries. |
 
 `MEMORY_TOOLS_GUIDE` (инжектится в системный контекст Claude на каждой сессии)
 инструктирует агента вызывать эти tool'ы не более 3 раз за turn и только

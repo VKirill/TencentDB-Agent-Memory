@@ -122,17 +122,18 @@ fi
 
 echo "claude-mem install: wrappers installed to $HOOKS_DIR (with bin baked)"
 
-# ── v0.4.0: MCP server registration ─────────────────────────────────
-# Register claude-mem MCP server in ~/.claude/settings.json so Claude Code
-# can call memory tools directly via MCP. Idempotent: only adds if absent.
+# ── v0.4.0/v0.4.2: MCP server registration helper ───────────────────
+# Called after settings.json exists (both fresh-create and merge paths).
+# v0.4.2: registers under "tencentdb-memory"; removes legacy "claude-mem"
+# key if present (upgrade migration from v0.4.0/v0.4.1).
 BIN_PATH="$CLAUDE_MEM_BIN"
-SETTINGS_PATH="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS_PATH" ]; then
-  # Idempotent: only register if not already present
-  if ! grep -q '"claude-mem"' "$SETTINGS_PATH"; then
+
+register_mcp_entry() {
+  local target_settings="$1"
+  if ! grep -q '"tencentdb-memory"' "$target_settings"; then
     node -e '
       const fs = require("node:fs");
-      const p = "'"$SETTINGS_PATH"'";
+      const p = "'"$target_settings"'";
       let s;
       try {
         s = JSON.parse(fs.readFileSync(p, "utf-8"));
@@ -141,19 +142,22 @@ if [ -f "$SETTINGS_PATH" ]; then
         process.exit(0);
       }
       s.mcpServers = s.mcpServers || {};
-      s.mcpServers["claude-mem"] = {
+      // v0.4.2: remove legacy "claude-mem" key if present (namespace cleanup)
+      if (s.mcpServers["claude-mem"]) {
+        delete s.mcpServers["claude-mem"];
+        console.log("claude-mem install: removed legacy claude-mem MCP key from", p);
+      }
+      s.mcpServers["tencentdb-memory"] = {
         command: "'"$BIN_PATH"'",
         args: ["mcp", "serve"]
       };
       fs.writeFileSync(p, JSON.stringify(s, null, 2));
-      console.log("claude-mem install: registered claude-mem MCP server in", p);
+      console.log("claude-mem install: registered tencentdb-memory MCP server in", p);
     '
   else
-    echo "claude-mem install: claude-mem MCP server already registered, skipping"
+    echo "claude-mem install: tencentdb-memory MCP server already registered, skipping"
   fi
-else
-  echo "claude-mem install: $SETTINGS_PATH not found, skipping MCP registration (run after Claude Code creates it)"
-fi
+}
 
 # ── v0.3.0: env file for OPENROUTER_API_KEY / VOYAGE_API_KEY ────────
 # Wrappers `set -a; . $HOME/.claude/claude-mem.env; set +a` if file exists.
@@ -237,6 +241,7 @@ fi
 if [[ ! -f "$SETTINGS_FILE" ]]; then
   cp "$RESOLVED_TPL" "$SETTINGS_FILE"
   echo "claude-mem install: created $SETTINGS_FILE"
+  register_mcp_entry "$SETTINGS_FILE"
   echo "claude-mem install: ✅ done. Start a new Claude Code session to activate hooks."
   exit 0
 fi
@@ -313,5 +318,6 @@ fi
 jq . "$MERGED" > "$SETTINGS_FILE"
 
 echo "claude-mem install: merged into $SETTINGS_FILE"
+register_mcp_entry "$SETTINGS_FILE"
 echo "claude-mem install: ✅ done. Start a new Claude Code session to activate hooks."
 exit 0

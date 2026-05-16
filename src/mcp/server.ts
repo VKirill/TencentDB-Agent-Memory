@@ -198,7 +198,7 @@ const TOOLS = [
 
 export async function runMcpServer(): Promise<void> {
   const server = new Server(
-    { name: "claude-mem", version: "0.4.0" },
+    { name: "tencentdb-memory", version: "0.4.2" },
     { capabilities: { tools: {} } },
   );
 
