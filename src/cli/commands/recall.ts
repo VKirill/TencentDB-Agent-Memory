@@ -17,7 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadContext } from "../context.js";
+import { loadContextOrAutoInit } from "../context.js";
 
 const MAX_OUTPUT_CHARS = 4000;
 const RECORD_SEPARATOR = "\n---\n";
@@ -29,6 +29,10 @@ export interface RunRecallOptions {
   query: string;
   /** Max number of matching turns to return. */
   limit: number;
+  /** Auto-init missing .claude/memory/ on first use (hook scenario). */
+  autoInit?: boolean;
+  /** Platform tag — written into config on auto-init (e.g. "claude-code"). */
+  platform?: string;
 }
 
 export interface RunRecallResult {
@@ -53,7 +57,11 @@ interface L0Message {
 export async function runRecall(opts: RunRecallOptions): Promise<RunRecallResult> {
   let ctx;
   try {
-    ctx = await loadContext({ projectRoot: opts.projectRoot });
+    ctx = await loadContextOrAutoInit({
+      projectRoot: opts.projectRoot,
+      autoInit: opts.autoInit,
+      platform: opts.platform,
+    });
   } catch (err) {
     return {
       ok: false,

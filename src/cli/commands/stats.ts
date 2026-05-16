@@ -12,13 +12,17 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadContext } from "../context.js";
+import { loadContextOrAutoInit } from "../context.js";
 
 const CONVERSATIONS_SUBDIR = "conversations";
 const LOG_FILE = "memory.log";
 
 export interface RunStatsOptions {
   projectRoot: string;
+  /** Auto-init missing .claude/memory/ on first use (hook scenario). */
+  autoInit?: boolean;
+  /** Platform tag — written into config on auto-init. */
+  platform?: string;
 }
 
 export interface RunStatsResult {
@@ -48,7 +52,11 @@ interface L0Message {
 export async function runStats(opts: RunStatsOptions): Promise<RunStatsResult> {
   let ctx;
   try {
-    ctx = await loadContext({ projectRoot: opts.projectRoot });
+    ctx = await loadContextOrAutoInit({
+      projectRoot: opts.projectRoot,
+      autoInit: opts.autoInit,
+      platform: opts.platform,
+    });
   } catch (err) {
     return emptyResult(opts.projectRoot, false, err instanceof Error ? err.message : String(err));
   }

@@ -14,6 +14,7 @@ import path from "node:path";
 import type { MemoryTdaiConfig } from "../config.js";
 import { parseConfig } from "../config.js";
 import { getEnv } from "../utils/env.js";
+import { runInit } from "./commands/init.js";
 
 export interface CliLogger {
   debug?: (message: string) => void;
@@ -136,4 +137,54 @@ function createFileLogger(logPath: string): CliLogger {
     warn: (msg) => write("warn", msg),
     error: (msg) => write("error", msg),
   };
+}
+
+export interface LoadOrAutoInitOptions extends LoadContextOptions {
+  /** When true and the config is missing, auto-init the project dir silently first. */
+  autoInit?: boolean;
+  /** When set together with autoInit, written into the new config's `platform` field. */
+  platform?: string;
+}
+
+/**
+ * Load context; if missing config and `autoInit` is true, bootstrap
+ * `.claude/memory/` silently first (then retry loadContext).
+ *
+ * v0.2 Claude Code hook contract: hooks pass `--auto-init` so the first
+ * SessionStart in a fresh project just works. Terminal users (no flag)
+ * still get the v0.1 error contract that tells them to run `claude-mem init`.
+ *
+ * Returns the loaded context, or throws if loading still fails after init.
+ */
+export async function loadContextOrAutoInit(opts: LoadOrAutoInitOptions): Promise<ClaudeCliContext> {
+  try {
+    return await loadContext(opts);
+  } catch (firstErr) {
+    if (!opts.autoInit) throw firstErr;
+
+    const initRes = await runInit({ projectRoot: opts.projectRoot, silent: true });
+    if (!initRes.ok) {
+      throw new Error(
+        `claude-mem: auto-init failed: ${initRes.error ?? "unknown error"} ` +
+        `(original loadContext error: ${firstErr instanceof Error ? firstErr.message : String(firstErr)})`,
+      );
+    }
+
+    // If the caller passed a platform (e.g. --platform claude-code from a
+    // hook), patch the freshly-created config.json so the v0.3 vector
+    // pipeline (when wired) can discover that this dir is Claude-Code-owned
+    // without re-asking.
+    if (opts.platform) {
+      try {
+        const cfgPath = path.join(opts.projectRoot, ".claude", "memory", "config.json");
+        const raw = JSON.parse(fs.readFileSync(cfgPath, "utf-8")) as Record<string, unknown>;
+        raw.platform = opts.platform;
+        fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + "\n");
+      } catch {
+        // Non-fatal — config still loadable, platform tag missed
+      }
+    }
+
+    return await loadContext(opts);
+  }
 }

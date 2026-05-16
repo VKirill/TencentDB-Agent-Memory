@@ -23,7 +23,14 @@ export function buildCli(): Command {
   program
     .name("claude-mem")
     .description("Four-layer local memory for Claude Code and other agents.")
-    .version("0.1.0");
+    .version("0.2.0")
+    .option("--auto-init", "auto-bootstrap .claude/memory/ on first use (for hook invocation)", false)
+    .option(
+      "--platform <name>",
+      "host platform tag (claude-code, standalone) — accepted by every subcommand. " +
+      "When combined with --auto-init, written into the new config.json. " +
+      "Future v0.3 use: drives adapter dispatch for vector recall.",
+    );
 
   program
     .command("init")
@@ -47,8 +54,13 @@ export function buildCli(): Command {
   program
     .command("capture")
     .description("Read { user, assistant } JSON on stdin; write to L0.")
-    .action(async () => {
-      const result = await runCapture({ projectRoot: process.cwd() });
+    .action(async (_subOpts: unknown, cmd: Command) => {
+      const opts = cmd.optsWithGlobals<{ autoInit?: boolean; platform?: string }>();
+      const result = await runCapture({
+        projectRoot: process.cwd(),
+        autoInit: opts.autoInit,
+        platform: opts.platform,
+      });
       if (!result.ok) {
         process.stderr.write(`claude-mem capture: ${result.error ?? "unknown error"}\n`);
       }
@@ -61,15 +73,18 @@ export function buildCli(): Command {
     .description("Keyword search over recorded turns; prints matches to stdout.")
     .requiredOption("-q, --query <text>", "search query (use '-' to read from stdin)")
     .option("-l, --limit <n>", "max number of matches", (v) => Number.parseInt(v, 10), 5)
-    .action(async (opts: { query: string; limit: number }) => {
-      let query = opts.query;
+    .action(async (subOpts: { query: string; limit: number }, cmd: Command) => {
+      const globals = cmd.optsWithGlobals<{ autoInit?: boolean; platform?: string }>();
+      let query = subOpts.query;
       if (query === "-") {
         query = await readStdinTrimmed();
       }
       const result = await runRecall({
         projectRoot: process.cwd(),
         query,
-        limit: opts.limit,
+        limit: subOpts.limit,
+        autoInit: globals.autoInit,
+        platform: globals.platform,
       });
       if (result.ok && result.text) process.stdout.write(result.text + "\n");
       if (!result.ok) {
@@ -81,8 +96,13 @@ export function buildCli(): Command {
   program
     .command("stats")
     .description("Show memory database statistics.")
-    .action(async () => {
-      const result = await runStats({ projectRoot: process.cwd() });
+    .action(async (_subOpts: unknown, cmd: Command) => {
+      const opts = cmd.optsWithGlobals<{ autoInit?: boolean; platform?: string }>();
+      const result = await runStats({
+        projectRoot: process.cwd(),
+        autoInit: opts.autoInit,
+        platform: opts.platform,
+      });
       if (result.ok) {
         process.stdout.write(formatStatsReport(result) + "\n");
       } else {

@@ -1,0 +1,57 @@
+{
+  "_claude_mem_installed": {
+    "version": "<VERSION>",
+    "binPath": "<ABS_BIN>",
+    "hooksDir": "<WRAPPER_DIR>"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<ABS_BIN> --auto-init --platform claude-code recall --query \"$(basename \"${CLAUDE_PROJECT_DIR:-$PWD}\")\" --limit 5",
+            "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<WRAPPER_DIR>/recall-wrapper.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<WRAPPER_DIR>/capture-wrapper.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<WRAPPER_DIR>/stop-wrapper.sh",
+            "timeout": 8000
+          }
+        ]
+      }
+    ]
+  }
+}
