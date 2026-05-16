@@ -297,11 +297,22 @@ export class StandaloneLLMRunnerFactory implements LLMRunnerFactory {
     const enableTools = opts?.enableTools ?? false;
     const modelRef = opts?.modelRef;
 
-    // Parse "provider/model" → just use the model part for OpenAI-compatible API
+    // Resolve model slug for the configured backend.
+    //
+    // Bug fix (v0.1 Task 21): the original code blindly stripped the
+    // `provider/` prefix from `provider/model` slugs. That works for
+    // upstream OpenAI proper (which doesn't accept `openai/gpt-4`)
+    // but BREAKS for OpenRouter / DeepSeek / OpenAI-compatible
+    // aggregators that *require* the full slug.
+    //
+    // New rule: preserve the full slug by default. Strip the provider
+    // prefix ONLY when the configured baseUrl points at the real OpenAI
+    // host. Any other endpoint (OpenRouter, custom) keeps the slug.
     let model = this.config.model;
     if (modelRef) {
-      const slashIdx = modelRef.indexOf("/");
-      model = slashIdx > 0 ? modelRef.slice(slashIdx + 1) : modelRef;
+      model = isOpenAIProperHost(this.config.baseUrl)
+        ? stripProviderPrefix(modelRef)
+        : modelRef;
     }
 
     this.logger?.debug?.(
@@ -315,4 +326,29 @@ export class StandaloneLLMRunnerFactory implements LLMRunnerFactory {
       logger: this.logger,
     });
   }
+}
+
+/**
+ * True iff baseUrl points at the canonical OpenAI host. Used to decide
+ * whether `provider/model` slugs should have their prefix stripped.
+ * Exported for unit tests.
+ */
+export function isOpenAIProperHost(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false;
+  try {
+    const u = new URL(baseUrl);
+    return u.hostname === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Strip a leading `provider/` segment if present (e.g. `openai/gpt-4` →
+ * `gpt-4`). Returns input unchanged when no slash is present.
+ * Exported for unit tests.
+ */
+export function stripProviderPrefix(modelRef: string): string {
+  const slashIdx = modelRef.indexOf("/");
+  return slashIdx > 0 ? modelRef.slice(slashIdx + 1) : modelRef;
 }
