@@ -57,8 +57,15 @@ export async function runCapture(opts: RunCaptureOptions): Promise<RunCaptureRes
     };
   }
 
-  // Read stdin
-  const stdinRaw = opts.stdin !== undefined ? opts.stdin : await readStdin();
+  // Read stdin (with OOM cap — see readStdin)
+  let stdinRaw: string;
+  try {
+    stdinRaw = opts.stdin !== undefined ? opts.stdin : await readStdin();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.logger.error(msg);
+    return { ok: false, l0Recorded: 0, error: msg };
+  }
 
   let payload: CaptureStdinPayload;
   try {
@@ -107,11 +114,25 @@ export async function runCapture(opts: RunCaptureOptions): Promise<RunCaptureRes
   }
 }
 
+/** Max stdin size for capture payload (8 MiB). Larger inputs are rejected
+ *  to prevent OOM from runaway or malicious producers. A single turn
+ *  shouldn't exceed a few KB in practice. */
+const MAX_STDIN_BYTES = 8 * 1024 * 1024;
+
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return "";
   const chunks: Buffer[] = [];
+  let total = 0;
   for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+    const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
+    total += b.length;
+    if (total > MAX_STDIN_BYTES) {
+      throw new Error(
+        `capture: stdin payload too large (>${MAX_STDIN_BYTES} bytes). ` +
+        `Refusing to read further to avoid OOM.`,
+      );
+    }
+    chunks.push(b);
   }
   return Buffer.concat(chunks).toString("utf-8");
 }
