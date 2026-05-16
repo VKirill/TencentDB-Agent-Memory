@@ -53,3 +53,10 @@ src/cli/index.ts
 # Comments intentionally describe the upstream OpenClaw runner to
 # explain why this stub exists (see file header).
 src/utils/clean-context-runner.ts
+
+# src/cli/commands/extract.ts (v0.3.0): two mentions are required by
+# upstream contract — `openclawConfig: undefined` is a mandatory field
+# in pipeline-factory.createL1Runner's option type. A header comment
+# documents the wiring choice (avoid TdaiCore's openclaw branch).
+# Both are runtime-safe in standalone mode.
+src/cli/commands/extract.ts

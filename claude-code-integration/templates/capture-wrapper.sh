@@ -16,6 +16,14 @@
 # Exit 0 always.
 
 set -u
+
+# v0.3.0: source user's env file (set -a auto-exports each assignment).
+if [ -f "$HOME/.claude/claude-mem.env" ]; then
+  set -a
+  . "$HOME/.claude/claude-mem.env"
+  set +a
+fi
+
 read -ra CLAUDE_MEM_CMD <<< "${CLAUDE_MEM_BIN:-claude-mem}"
 
 INPUT="$(cat 2>/dev/null || true)"

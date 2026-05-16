@@ -9,6 +9,95 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.3.0] — 2026-05-16
+
+LLM pipeline activation (Phase A). `claude-mem extract` now manually
+triggers L1 LLM extraction over accumulated L0 turns. Hooks pass API
+keys via `~/.claude/claude-mem.env`.
+
+### Added
+- **`claude-mem extract` CLI command** (`src/cli/commands/extract.ts`,
+  ~290 lines):
+  - Idempotent batch L1 runner — drains each sessionKey until cursor
+    catches up (50 iter hard cap)
+  - JSONL→SQLite L0 backfill: capture writes JSONL; runner reads SQLite
+    `l0_conversations`; extract bridges via `vectorStore.upsertL0`
+    (idempotent on `id`)
+  - Direct pipeline-factory wiring (`initStores` + `createL1Runner`) —
+    bypasses TdaiCore's openclaw-branch surface, cleaner test seam
+  - Preflight: missing config / missing OPENROUTER_API_KEY /
+    extraction.enabled=false → exit 1 with explicit stderr
+  - Flags: `--dry-run` (enumerate without LLM), `--max-sessions N`
+    (cap), `--auto-init` (inherits global)
+  - Exit code propagates real success/failure (NOT 0-always like
+    hooks) — extract is a deliberate command
+- **Env file loading in wrappers**: all 3 wrappers (`recall`, `capture`,
+  `stop`) prepend `set -a; . "$HOME/.claude/claude-mem.env"; set +a`.
+  install.sh creates the file (mode 0600) from
+  `templates/claude-mem.env.example` if absent; never overwrites
+  existing user-edited keys.
+- `tests/integration/` test dir support (`test:integration` npm
+  script, vitest glob update)
+
+### Verified
+- Real Hy3 smoke (4-turn React Q&A, OPENROUTER_API_KEY from env):
+  - Hy3 valid JSON rate: **100%** (1/1 LLM calls, well above 80% gate)
+  - Wall-clock: 14.2 s per L1 extraction
+  - Drain loop verified end-to-end (cursor advances, drain exits at 0)
+  - R1 fallback (Sonnet 4.6) NOT activated — Hy3 reliable on this fixture
+  - Note: 4 short turns → 1 scene name, 0 individual L1 facts.
+    Behavior is correct — Hy3 doesn't extract memories from thin
+    dialogues. Real long sessions will yield more.
+
+### Deferred to v0.3.1
+- PM2 scheduler for automatic periodic extract across project allowlist
+- Bigger fixture Hy3 smoke (20-prompt validation) — current 1-call
+  smoke proves the pipeline, not the steady-state quality
+
+### Deferred to v0.3.2
+- Vector recall via `TdaiCore.handleBeforeRecall` (replaces keyword
+  grep in `recall.ts`) — depends on accumulated L1 data
+
+### Skipped from SPEC
+- A5 (full integration test with mocked LLM through real pipeline-
+  factory) and A6 (cursor advancement smoke) — both covered by
+  A1 unit tests (cases c/e/h with `l1RunnerOverride` injection) +
+  A11 real-LLM E2E. Avoids duplicating coverage.
+
+### Changed
+- `package.json version`: 0.2.2 → 0.3.0
+- CLI version string: 0.2.2 → 0.3.0
+- `ExtractSummary.l1_new` field renamed to `l0_processed` (more
+  accurate — counts runner's input messages, not L1 facts written)
+
+### Codex review
+- 2 SPEC review rounds, 8 findings (4 P2 + 1 P1 + 3 P2), all
+  resolved in SPEC before implementation. See SPEC §9.
+
+### Migration from v0.2.x
+
+```bash
+# 1. Pull v0.3.0 and rebuild
+cd /path/to/TencentDB-Agent-Memory
+git pull
+npm install --ignore-scripts && npm run build
+
+# 2. Re-run install.sh to refresh wrappers + create env file
+bash claude-code-integration/install.sh
+
+# 3. Edit env file and add real keys
+$EDITOR ~/.claude/claude-mem.env
+#   OPENROUTER_API_KEY=sk-or-...
+#   VOYAGE_API_KEY=pa-...
+
+# 4. Test extract on a project that already has v0.2 capture history
+cd ~/some-project
+claude-mem extract            # backfills SQLite from existing JSONL, then runs Hy3
+sqlite3 .claude/memory/vectors.db 'SELECT COUNT(*) FROM l1_records'
+```
+
+---
+
 ## [0.2.2] — 2026-05-16
 
 Cosmetic patch — readable summaries in recall output.

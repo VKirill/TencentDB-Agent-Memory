@@ -122,6 +122,26 @@ fi
 
 echo "claude-mem install: wrappers installed to $HOOKS_DIR (with bin baked)"
 
+# ── v0.3.0: env file for OPENROUTER_API_KEY / VOYAGE_API_KEY ────────
+# Wrappers `set -a; . $HOME/.claude/claude-mem.env; set +a` if file exists.
+# We create it from template (mode 0600) ONLY if absent — never overwrite
+# user's existing keys.
+ENV_FILE="${CLAUDE_MEM_ENV_FILE:-$HOME/.claude/claude-mem.env}"
+ENV_TEMPLATE="$TEMPLATES_DIR/claude-mem.env.example"
+if [[ ! -f "$ENV_FILE" ]]; then
+  if [[ -f "$ENV_TEMPLATE" ]]; then
+    cp "$ENV_TEMPLATE" "$ENV_FILE"
+    chmod 0600 "$ENV_FILE"
+    echo "claude-mem install: created env file at $ENV_FILE (mode 0600)"
+    echo "claude-mem install: → edit it and add OPENROUTER_API_KEY=... VOYAGE_API_KEY=..."
+    echo "claude-mem install: → then 'claude-mem extract' (v0.3.0+) can call the LLM pipeline"
+  else
+    echo "claude-mem install: env template missing ($ENV_TEMPLATE) — skipping env file creation" >&2
+  fi
+else
+  echo "claude-mem install: env file already at $ENV_FILE (unchanged)"
+fi
+
 # ── Resolve template placeholders ────────────────────────────────────
 
 TPL="$TEMPLATES_DIR/settings.json.template"

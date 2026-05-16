@@ -12,6 +12,15 @@
 # Exit 0 always — hooks must never block the user.
 
 set -u
+# v0.3.0: source user's env file (set -a auto-exports each assignment).
+# Pattern works in bash 3.2+ and dash. Brings OPENROUTER_API_KEY +
+# VOYAGE_API_KEY into the subprocess Claude Code spawns.
+if [ -f "$HOME/.claude/claude-mem.env" ]; then
+  set -a
+  . "$HOME/.claude/claude-mem.env"
+  set +a
+fi
+
 # Split CLAUDE_MEM_BIN on whitespace so "node /path/bin.mjs" works in dev
 # while a single absolute path (production install.sh output) also works.
 read -ra CLAUDE_MEM_CMD <<< "${CLAUDE_MEM_BIN:-claude-mem}"
