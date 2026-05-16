@@ -20,6 +20,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run tests/integration",
+    "smoke:hy3": "node scripts/smoke-hy3.mjs",
     "lint:gate": "bash scripts/check-no-openclaw.sh"
   },
   "files": [

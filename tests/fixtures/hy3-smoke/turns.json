@@ -1,0 +1,82 @@
+[
+  {
+    "user": "Объясни в чём смысл `set -euo pipefail` в bash и когда его НЕ стоит использовать?",
+    "assistant": "`set -e` — выход при первой ошибке, `-u` — ошибка на необъявленных переменных, `-o pipefail` — конвейер падает если хоть одна команда не 0. НЕ ставь в interactive shell или в скриптах с намеренными failures (например условные команды через `||`). В production-скриптах — обязательно: лучше упасть громко чем продолжить с битым state."
+  },
+  {
+    "user": "Как в TypeScript правильно типизировать функцию которая может вернуть либо данные либо ошибку, без exceptions?",
+    "assistant": "Используй Result-pattern: `type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E }`. Преимущества над throw: явная видимость failure в сигнатуре, нет invisible control flow, легко chain через `if (!r.ok) return r`. Минусы: больше boilerplate чем try/catch. В библиотеках типа Effect-TS или neverthrow это первоклассный паттерн."
+  },
+  {
+    "user": "У меня PostgreSQL запрос делает sequential scan на таблице 5M rows вместо использования индекса. Какие шаги дебага?",
+    "assistant": "1) `EXPLAIN ANALYZE` — увидишь реальный план + время. 2) Проверь статистику: `ANALYZE table_name`, может устарела. 3) Селективность: если предикат отбирает >5-10% строк, planner выберет seq scan правильно — индекс будет медленнее. 4) Тип данных: индекс на text vs query с integer = no match. 5) Функциональный индекс если в WHERE есть `lower(col)`. 6) `random_page_cost` может быть слишком высоким для SSD (поставь 1.1)."
+  },
+  {
+    "user": "Как настроить Nuxt 4 SSR чтобы данные с API подгружались на сервере без double-fetch на клиенте?",
+    "assistant": "Используй `useFetch` или `useAsyncData` — они кэшируют между сервером и клиентом через `nuxtApp.payload`. Ключевые правила: 1) Не оборачивай в `onMounted` — сломает SSR. 2) Уникальный key обязателен если query зависит от роута. 3) Для авторизованных endpoints — `$fetch` напрямую в `setup()` под `if (process.server)` или используй server middleware. 4) Hydration warning часто из-за разного timestamp клиент/сервер — заморозь Date в payload."
+  },
+  {
+    "user": "What's the practical difference between `npm ci` and `npm install` in CI/CD pipelines?",
+    "assistant": "`npm ci` requires existing package-lock.json — fails if missing or out of sync. Wipes node_modules first → always clean install. ~2x faster than npm install on cache hits because it skips dependency resolution. `npm install` updates lockfile in-place if needed → can cause non-deterministic builds across runs. In CI: always npm ci. In dev with new deps: npm install. The lockfile mismatch failure in npm ci is a feature, not a bug — it catches drift before deploy."
+  },
+  {
+    "user": "Я предпочитаю работать на русском с английскими code/commit messages. Запомни это для будущих сессий.",
+    "assistant": "Принято. Code, commit messages, переменные, error strings — английский. Объяснения, обсуждения, planning, документация для пользователя — русский. Это стандартная mixed-локаль для русскоязычных разработчиков OSS и сохраняет совместимость кода с международными контрибьюторами."
+  },
+  {
+    "user": "У меня BullMQ worker обрабатывает изображения но иногда зависает на ffmpeg. Как поставить timeout?",
+    "assistant": "Два уровня: 1) BullMQ job-level через `defaultJobOptions: { jobsOptions: { timeout: 60_000 } }` — но это soft timeout, просто кидает stalled event. 2) Жёсткий kill child process: оборачивай ffmpeg spawn в Promise.race с setTimeout, на timeout → `proc.kill('SIGKILL')`. Лучше комбинировать: BullMQ timeout = двухкратный ffmpeg timeout, чтобы worker гарантированно очистил state до stall detection. Логируй каждый kill."
+  },
+  {
+    "user": "Telegram bot ловит media_group но я получаю каждое фото отдельным update. Как собрать в одну группу?",
+    "assistant": "Telegram не шлёт media_group атомарно — несколько `message` updates с одинаковым `media_group_id`. Решение: буферизуй в Redis с TTL 2s, ключ `mg:{group_id}`. На каждый message с media_group_id — push в list, setex TTL. После TTL — обработай весь буфер. В grammy: middleware на `message:media_group_id`, в Redis lpush + expire. Edge case: фото без caption — buffer до timeout, потом emit. Готовый плагин: grammyY/files или своё."
+  },
+  {
+    "user": "Какой формат структурированного JSON выхода более надёжен для LLM — top-level array или объект с полем data?",
+    "assistant": "Top-level array часто проще для LLM — меньше шаблона, нет шанса добавить лишних полей. НО: труднее версионировать (нельзя добавить metadata без breaking change), часть моделей путается с пустым array vs null. Объект с `{data: [...], version, errors?}` более robust для production: расширяемый, явно различает empty vs error. Для smoke-теста parsing — оба работают, выбирай по уровню структуры в schema."
+  },
+  {
+    "user": "Как в Fastify правильно валидировать webhook payload с HMAC-SHA256 подписью?",
+    "assistant": "Критически: HMAC считается по RAW body, не по parsed JSON (JSON.stringify даст другой порядок ключей → mismatch). Подключай rawBody plugin (либо собственный pre-parser hook), читай `request.rawBody`. Compare: `crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(computed))` — НЕ через `===` (timing attack). Регистрируй webhook routes ПОСЛЕ rawBody плагина — порядок важен. CloudPayments / YooKassa / Apple ASSN — все требуют этого паттерна."
+  },
+  {
+    "user": "Когда стоит использовать SQLite vs PostgreSQL для embedded приложения?",
+    "assistant": "SQLite если: single-writer, <100 GB данных, нет network concurrency, эмбед в desktop/mobile/CLI tool. Преимущества: zero-config, файл легко backup'ить, низкий cold-start. Postgres если: multi-writer, complex queries, full-text search в production, нужны foreign keys с настоящими constraints, replication. Граница не размер а concurrency: 5 readers + 1 writer SQLite норм, 5 writers — постоянные locks. Для memory-system типа TDAI SQLite + sqlite-vec хорош потому что один процесс пишет за раз."
+  },
+  {
+    "user": "Объясни разницу между Cursor pagination и Offset pagination для бесконечных feed'ов.",
+    "assistant": "Offset (LIMIT 20 OFFSET 100): простой SQL, но БД сканит и отбрасывает первые 100 строк → деградация на больших страницах. Плюс race condition: новый item добавляется во время скролла → дубли или пропуски. Cursor (WHERE id > last_id ORDER BY id LIMIT 20): O(log n) по индексу, стабильный к insert'ам. Минус: нельзя прыгать на 'страницу 50' — только sequential. Для feed'ов всегда cursor. Для admin таблиц с 'go to page N' UI — offset норм."
+  },
+  {
+    "user": "Я планирую месяцы вперёд, не люблю переключаться между задачами. Учти при дробении планов на части.",
+    "assistant": "Принято. Готовлю планы в виде монолитных SPEC'ов с заранее расписанной последовательностью task'ов, не отдельными ad-hoc запросами. Каждая часть имеет полный контекст: deps, acceptance criteria, риски, rollback. Минимизирую context-switch — лучше один длинный фокусный pass через всю задачу, чем 10 коротких прерываний. Не дроблю на 5-минутные коммиты если можно сделать осмысленную единицу 1-2 часа."
+  },
+  {
+    "user": "Что делать когда `git rebase -i` сломал историю и я потерял несколько коммитов?",
+    "assistant": "Шанс восстановить высокий через `git reflog` — он трекает HEAD на 90 дней, включая rebase интермедиаты. Найди SHA коммита до rebase (обычно `git reflog | head -20`), потом `git reset --hard <sha>` вернёт workspace. Если коммиты были на ветке и она перезаписалась — `git reflog show <branch>` тоже работает. Stash'нутые изменения отдельно: `git stash list`, `git stash apply stash@{N}`. Никогда не делай `git gc --prune=now` пока не разобрался — это снесёт reflog."
+  },
+  {
+    "user": "Как правильно структурировать monorepo на TypeScript с shared packages и turborepo?",
+    "assistant": "1) Pin Node + npm версии в package.json `engines` + `volta` — все contributors на одном runtime. 2) Каждый workspace package в `packages/<name>` с `package.json` декларирующим только используемые exports. 3) turbo.json pipeline: `build` depends on `^build` (dep packages первыми), `lint` + `typecheck` параллельно. 4) Shared TypeScript config в `packages/tsconfig` — все extends. 5) Внутрипакетные импорты через `@scope/name` (через path mapping или workspaces), не относительные пути. 6) CI: turbo cache в GitHub Actions = быстрее ребилды."
+  },
+  {
+    "user": "У меня бюджет на токены неограниченный — приоритет качество и надёжность кода.",
+    "assistant": "Запомнил: при выборе модели бери лучшее (Sonnet 4.6 или Opus 4 если доступен) не экономя на extended thinking. Использую максимальные context windows, не ужимаю промпты ради 10% экономии. Делаю несколько раундов code review (codex adversarial, security audit) даже если они дорогие. Test coverage целью 90%+ не 70%. Документация полная, не минимальная. Refactoring проактивный когда вижу tech debt, не накопительный."
+  },
+  {
+    "user": "Как настроить pre-commit hook чтобы автоматически запускать lint + typecheck перед каждым git commit?",
+    "assistant": "Husky 9+ де факто стандарт: `npm i -D husky && npx husky init` создаёт `.husky/pre-commit` файл. Туда: `npm run lint && npm run typecheck`. Скорость критична — на больших monorepo делай только staged files через lint-staged. Пример: `npx lint-staged` в .husky/pre-commit + конфиг `\"lint-staged\": {\"*.ts\": [\"eslint --fix\", \"prettier --write\"]}`. Если хук медленный (>2 сек) — разработчики начнут `--no-verify`. Для тяжёлых проверок типа typecheck — отдельно в CI, не в pre-commit."
+  },
+  {
+    "user": "Когда стоит делать DB migration через ALTER TABLE vs создать новую таблицу + копирование?",
+    "assistant": "ALTER TABLE если: добавляешь nullable column, удаляешь индекс, переименовываешь (если БД поддерживает). Быстро, обычно lock-free на современных БД (PG 11+, MySQL 8+). Новая таблица + копирование если: меняешь NOT NULL constraint при наличии NULL значений, кардинально меняешь PK, нужен zero-downtime на большой таблице (>10M rows). Pattern: create new table → triggers для dual-write → backfill → switch reads → drop old. Стандартный playbook от GitHub, gh-ost, pt-online-schema-change."
+  },
+  {
+    "user": "Объясни Outbox pattern для надёжной публикации событий после успешной транзакции.",
+    "assistant": "Проблема: после `db.transaction(() => { update + queue.publish() })` если publish упал — данные в БД, событие потеряно (или наоборот). Outbox решает атомарно: в той же транзакции вставляем row в `outbox` таблицу с payload события. Отдельный воркер polls outbox → публикует в queue → помечает row как sent → удаляет. Гарантия: at-least-once delivery (consumer должен быть idempotent). Альтернативы: CDC через Debezium/Kafka Connect (читает WAL), Transactional outbox в EventStoreDB. Используй обязательно для платежей, notifications, audit log."
+  },
+  {
+    "user": "Selfystudio проект — Fastify API + BullMQ worker + Nuxt 4 web + bot-thin (Grammy). Запомни stack.",
+    "assistant": "Запомнил: selfystudio — Node 22 monorepo. Stack: apps/api (Fastify, port 5000), apps/worker (BullMQ generation jobs), apps/bot-thin (Grammy Telegram facade), apps/web (Nuxt 4 marketing+cabinet+admin). Shared packages: application, domain, contracts, ai-prompts, constructor, auth, http, events, result, feature-flags, observability. DB: PostgreSQL via Prisma + Redis. Storage: S3. Build: Turborepo + npm workspaces. Deploy: PM2 / Docker Compose. Критичные инварианты живут в CLAUDE.md проекта."
+  }
+]
