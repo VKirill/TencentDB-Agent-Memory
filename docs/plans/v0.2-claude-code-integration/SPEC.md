@@ -1,125 +1,174 @@
-# v0.2 SPEC — Claude Code Integration (WP3 full + WP3.6 smoke + WP4)
+# v0.2 SPEC — Claude Code Integration (Global Install + Per-Project Auto-Init)
 
-> Version: 0.2.0-draft · Date: 2026-05-16 · Owner: VKirill
+> Version: 0.2.0-draft (rev2) · Date: 2026-05-16 · Owner: VKirill
 > Branch (planned): `feat/v0.2-claude-code-integration`
-> Master SPEC: `/home/ubuntu/.claude/memory-fork-plan/SPEC.md`
-> Predecessor: v0.1 SPEC at `docs/plans/v0.1-decouple-and-cli/SPEC.md` (must ship first; some tasks depend on v0.1 Task 21 LLM slug fix)
-> **Status:** Draft from `@feature-planner` (background run, 2026-05-16). `/codex:review` pending. **3 open questions** must be answered before Phase B+C start.
+> Predecessor: v0.1 (merged to main at `9d31f51`)
+> **Architecture pivot (user request 2026-05-16):** install once globally; memory accumulates per-project automatically.
 
 ---
 
-## 1. Goal
+## 1. Goal (revised)
 
-Make `@vkirill/tencentdb-agent-memory` fully usable inside a Claude Code project:
+User experience:
 
-1. **WP3 full** — `ClaudeCodeHostAdapter` + `ClaudeCodeLLMRunnerFactory` wired through CLI via `--platform claude-code` flag or `config.platform: "claude-code"` setting.
-2. **WP3.6** — Hy3 JSON-reliability smoke test. 20 L0→L1 extraction prompts against real Hy3 via OpenRouter. Asserts valid-JSON rate ≥ 95%. On failure → activate pre-approved R1 fallback (L0→L1 switches to `anthropic/claude-sonnet-4.6`; L2/L3 stay on Hy3).
-3. **WP4** — hook templates + non-destructive `install.sh` + `.env.example` + README + `uninstall.sh`. Goal: `bash install.sh` in any Claude Code project → 4 hooks fire → memory persists across sessions.
+```bash
+# One-time, machine-wide:
+npm i -g github:VKirill/TencentDB-Agent-Memory
+bash $(npm root -g)/@vkirill/tencentdb-agent-memory/claude-code-integration/install.sh
+
+# Then forever, in every project:
+cd ~/any-project
+claude          # starts Claude Code; hooks fire automatically;
+                # memory auto-inits in ./.claude/memory/ if absent;
+                # subsequent sessions in the same project accumulate context
+```
+
+No per-project `bash install.sh` needed. No `claude-mem init` needed. Just `cd <project> && claude`.
+
+Concrete deliverables:
+1. **`ClaudeCodeHostAdapter` + `ClaudeCodeLLMRunnerFactory`** — wire `--platform claude-code` adapter selection (kept from rev1).
+2. **Auto-init in capture/recall/stats** — when invoked with `--auto-init` flag (hooks pass it), commands silently bootstrap `.claude/memory/` if absent. Manual terminal use without the flag still errors per v0.1 contract.
+3. **WP3.6 Hy3 smoke** (20 synthesized prompts, ≥95% valid-JSON, R1 fallback pre-approved) — gates v0.2 release.
+4. **WP4 global install.sh** — merges hook block into `~/.claude/settings.json` (not per-project). Idempotent. Detects existing claude-mem v12.7.5 conflicts.
+5. **WP4 hooks pass `$CLAUDE_PROJECT_DIR`** to commands; commands operate on that dir's `.claude/memory/`.
+6. **Uninstall.sh** removes global hooks; leaves per-project memory dirs intact (user wipes manually).
 
 ## 2. Non-Goals (v0.2)
 
+- ❌ Per-project `install.sh` — replaced by global install
 - ❌ Migration from `claude-mem v12.7.5` data → v0.3
 - ❌ MCP server variant → v0.3
-- ❌ npm publish → v0.3
-- ❌ Global cross-project memory at `~/.claude-mem-global/` → v0.3
-- ❌ Cleanup of dead `src/core/store/tcvdb*.ts` (may opportunistically delete; mark optional in CHANGELOG if done)
+- ❌ npm publish (still GitHub-URL install) → v0.3
+- ❌ Cross-project shared memory at `~/.claude-mem-global/` → v0.3
+- ❌ Cleanup of dead `src/core/store/tcvdb*.ts` → may delete opportunistically; not gated
 
-## 3. Adapter design decisions
+## 3. Architecture decisions (locked)
 
-### A1. Adapter selection — **config-driven, with `--platform` override**
+### A1. Adapter selection — **config-driven + `--platform` override** (unchanged from rev1)
 
-`.claude/memory/config.json` has `"platform": "claude-code" | "standalone"` (default `"standalone"`). CLI accepts `--platform <name>` for per-invocation override. **`CLAUDE_PROJECT_DIR` env presence is NOT used for auto-selection** (too magical, breaks debuggability between Claude Code shell and plain shell).
+`.claude/memory/config.json` has `"platform": "claude-code" | "standalone"` (default `"standalone"`). CLI `--platform <name>` overrides per invocation. Auto-init writes `"platform": "claude-code"` when the `--auto-init` flag is set.
 
-`install.sh` writes `"platform": "claude-code"` into config at install time — user gets right adapter without thinking.
-
-### A2. Session/agent identity — **synthesize from `CLAUDE_PROJECT_DIR` + UTC day bucket**
+### A2. Session/agent identity — **synthesize from `CLAUDE_PROJECT_DIR` + UTC day bucket** (unchanged)
 
 ```
-sessionId = sha1(CLAUDE_PROJECT_DIR + "::" + yyyy-mm-dd).slice(0,16)
+sessionId = sha1(CLAUDE_PROJECT_DIR + "::" + yyyy-mm-dd).slice(0, 16)
 ```
 
-Fallback to `cwd` if `CLAUDE_PROJECT_DIR` unset. If hook payload provides `session_id` on stdin JSON, prefer it; synthesis is fallback. Day-granularity matches TDAI's L0→L1 batching semantics; turn-precise sessions aren't needed.
+Fallback to `cwd` if `CLAUDE_PROJECT_DIR` unset. If hook payload provides `session_id` on stdin, prefer it.
 
-## 4. Hook command spec
+### A3. **NEW** — Auto-init semantics
 
-All commands: cwd = `$CLAUDE_PROJECT_DIR`; PATH resolves `claude-mem` (preferred) or `${CLAUDE_PROJECT_DIR}/.claude/memory/.bin/claude-mem` fallback. All exit 0 unconditionally. Hard-bounded by Claude Code's 10s hook timeout.
+- New global CLI flag: `--auto-init`. When present AND the target `.claude/memory/config.json` is missing, the command silently runs `runInit({projectRoot, force: false})` first, then proceeds with the requested action.
+- **Without** `--auto-init`: capture/recall/stats fail-fast on missing config (preserves v0.1 contract for terminal users).
+- **With** `--auto-init`: silent creation. Log "auto-init: created .claude/memory in <path>" to `memory.log` (NOT stdout — hooks have stdout discipline).
+- `init` command itself stays unchanged: explicit, prints to stdout.
+- Concurrency: two parallel hooks could race on first init. Mitigation: `runInit` is already idempotent (mkdir recursive, file existence check). Acceptable race window.
 
-| Hook | Command | Stdin format | Timeout | Failure mode |
-|---|---|---|---|---|
-| `SessionStart` | `claude-mem recall --query "$(basename "$CLAUDE_PROJECT_DIR")" --limit 5 --platform claude-code` | Hook JSON (ignored by recall; logged for debug) | 8000 ms | exit 0; empty stdout if backend dead; full error chain → `.claude/memory/memory.log` |
-| `UserPromptSubmit` | `claude-mem recall --query - --limit 3 --platform claude-code` (reads query from stdin) | `{ "user_prompt": "...", "session_id": "..." }`. Command extracts `user_prompt` via inline node JSON parse (no jq dep). | 5000 ms | exit 0; empty stdout; never blocks |
-| `PostToolUse` (matcher: `Edit\|Write\|MultiEdit`) | `claude-mem capture --platform claude-code &` (background, wrapper waits ≤500ms then disowns) | `{ "tool_name", "tool_input", "tool_response", "session_id" }`. Wrapper translates → `{user, assistant, metadata:{toolName, sessionId, tags:["code-change"]}}`. | wrapper <1s; capture continues in background | wrapper exit 0; bg errors → log only |
-| `Stop` | `claude-mem capture --platform claude-code` (synchronous; session summary) | `{ "session_id", "stop_hook_active", "transcript"? }`. Wrapper translates → `{user: "session-end", assistant: "<transcript>", metadata:{tags:["session-summary"], sessionId}}`. | 8000 ms | exit 0; partial flush OK |
+### A4. **NEW** — Global hooks layout
 
-**Wrapper script:** `claude-code-integration/templates/hook-capture-wrapper.sh` (~30 lines, no jq dep — uses inline node one-liner). Keeps `capture`'s contract clean (any host); keeps `settings.json` commands single-line.
+Hooks live at `~/.claude/settings.json` (Claude Code global settings), NOT at `<project>/.claude/settings.json`. Per Claude Code's hook resolution: global hooks fire for every session in every project.
 
-## 5. `install.sh` design
+Each hook command receives `$CLAUDE_PROJECT_DIR` from Claude Code's env — the command then operates on `<CLAUDE_PROJECT_DIR>/.claude/memory/`. Project boundary preserved, no global memory pollution.
 
-- **Idempotent.** Marker key `"_claude_mem_installed": "<version>"` in `.claude/settings.json`. Re-run upgrades in-place; never duplicates.
-- **jq deep-merge** with `(event, matcher)`-tuple dedup. Existing same-matcher hook → stderr warning + skip that one hook (not whole install). `--force` to overwrite.
-- **claude-mem v12.7.5 conflict detection** — pre-flight greps `"claude-mem"` outside marker. If found → exit 1 with explicit message. Override: `--allow-coexist`.
+### A5. **NEW** — `claude-mem` PATH discovery
+
+After `npm i -g`, the bin lives at `$(npm bin -g)/claude-mem`. Hooks must find it even when Claude Code spawns a shell that doesn't load the user's interactive PATH. Mitigation:
+- Install script captures `which claude-mem` at install time and writes the **absolute path** into the global settings.json hook command. No PATH lookup at hook runtime.
+- If `claude-mem` moves (npm upgrade), user re-runs `bash <pkg>/claude-code-integration/install.sh` — idempotent re-write.
+
+## 4. Hook command spec (revised for global + absolute path + auto-init)
+
+All commands: cwd inherited from Claude Code (likely `$CLAUDE_PROJECT_DIR`). All exit 0 always. Bounded by 10s timeout.
+
+| Hook | Command | Notes |
+|---|---|---|
+| `SessionStart` | `<abs>/claude-mem recall --query "$(basename "$CLAUDE_PROJECT_DIR")" --limit 5 --platform claude-code --auto-init` | First session in a new project auto-inits the dir. Recall on empty memory returns "" → no stdout pollution. |
+| `UserPromptSubmit` | `<abs>/claude-mem recall --query - --limit 3 --platform claude-code --auto-init` (reads user prompt from stdin via inline node JSON parse) | Same auto-init path. |
+| `PostToolUse` (matcher: `Edit\|Write\|MultiEdit`) | `<abs>/claude-mem capture --platform claude-code --auto-init` (wrapper script translates hook JSON → `{user, assistant, metadata}`) | Auto-init ensures dir exists before capture. Wrapper runs in background, returns ≤500ms. |
+| `Stop` | `<abs>/claude-mem capture --platform claude-code --auto-init` (wrapper for session-summary) | Same. |
+
+`<abs>` is the result of `which claude-mem` at install time, baked into the settings.json hook command string.
+
+**Wrapper script:** `claude-code-integration/templates/hook-capture-wrapper.sh` — translates Claude Code's hook stdin payload (different shape per hook) into `capture`'s expected `{user, assistant, metadata}` JSON via inline node one-liner. No jq dep.
+
+## 5. `install.sh` design (revised — global, not per-project)
+
+- **Target:** `~/.claude/settings.json` (Claude Code's global settings).
+- **Idempotent.** Marker key `"_claude_mem_installed": "<version>"` under the top-level `_claude_mem` object. Re-run upgrades hook commands + marker in place.
+- **Captures absolute bin path** via `which claude-mem` (or `command -v`). Aborts if not found with explicit install instruction.
+- **jq deep-merge** over existing settings, dedup by `(event, matcher)` tuple. Same-matcher hook → stderr warn + skip that one hook (not whole install).
+- **claude-mem v12.7.5 conflict detection** — pre-flight greps `~/.claude/settings.json` for `"claude-mem"` outside the marker. If found → exit 1 with explicit message. Override: `--allow-coexist`.
+- **No per-project `.gitignore`** writes (install is global). Each project's `init` (manual or auto) writes its own `.gitignore`.
 - **Requires jq.** Hard dep; if missing → print OS-specific install command and exit 1.
-- **`.gitignore` append** of `.claude/memory/` (idempotent).
-- **Bin symlink** `.claude/memory/.bin/claude-mem` → `$(which claude-mem)` for PATH-stability between shell and Claude Code's spawn env.
+- **Wrapper script install:** `install.sh` copies `templates/hook-capture-wrapper.sh` to `~/.claude/hooks/claude-mem/hook-capture-wrapper.sh` (creates dir if absent, `chmod +x`). Hook command refers to it via absolute path.
 
 ## 6. WP3.6 Hy3 smoke design
 
-- **Standalone**: `scripts/smoke-hy3.mjs` invoked via `npm run smoke:hy3`. Not in `npm test`. CI skips when `OPENROUTER_API_KEY` unset (exit 0 + warning).
-- **Dataset**: 20 `CompletedTurn` fixtures at `tests/fixtures/hy3-smoke/turns.json`. **Source — open Q2.**
-- **Procedure**: per fixture, run L1 extraction prompt (reuse `src/core/prompts/l1-extraction.ts`) through `ClaudeCodeLLMRunnerFactory`. Sequential, 250 ms spacing (OpenRouter free-tier rate-limit).
-- **Validation**: `JSON.parse` + minimal shape check vs L1 extraction schema.
-- **Output**: JSON report `tests/output/hy3-smoke-report.json` with per-prompt `{id, ok, parseError?, latencyMs, tokensIn, tokensOut}` + aggregate `{validJsonRate, p50LatencyMs, totalCostUsd}`. Wall-clock budget 2 min.
-- **Gate**: `validJsonRate >= 0.95`. On fail → exit 1, print activation snippet for fallback config; snippet also commented in `templates/config.default.json`.
+- **Standalone**: `scripts/smoke-hy3.mjs` invoked via `npm run smoke:hy3` (from the cloned repo, not from a user project).
+- **Dataset (Q2 resolved 2026-05-16): SYNTHESIZED** — 20 hand-crafted turn fixtures in `tests/fixtures/hy3-smoke/turns.json`. PII-safe, deterministic, representative of code-edit + Q&A + debugging conversation patterns.
+- **Procedure**: per fixture → L1 extraction prompt via `ClaudeCodeLLMRunnerFactory` → `JSON.parse` + shape check vs L1 schema.
+- **Gate**: `validJsonRate >= 0.95`. On fail → exit 1 + activate R1 fallback (switch L0→L1 to `anthropic/claude-sonnet-4.6`; L2/L3 stay on Hy3); commented alt-config in `templates/config.default.json`.
+- Skipped in CI without `OPENROUTER_API_KEY` (exit 0 + warning).
 
-## 7. TDD checklist — 13 commits
+## 7. TDD checklist — 14 commits
 
-### Phase A — Claude Code adapter (5 commits)
-
-| # | Action | Acceptance |
-|---|---|---|
-| 1 | 🔴 `src/adapters/claude-code/host-adapter.test.ts` — 4 cases: `getRuntimeContext()` returns `platform: "claude-code"`; `dataDir = <projectRoot>/.claude/memory`; sessionId synthesized when not provided; explicit sessionId overrides | Test red |
-| 2 | 🟢 `src/adapters/claude-code/host-adapter.ts` — `ClaudeCodeHostAdapter extends StandaloneHostAdapter`; `synthesizeSessionId(projectDir, date)` helper | Tests green |
-| 3 | 🔴 `src/adapters/claude-code/llm-runner.test.ts` — 3 cases: factory defaults to OpenRouter baseUrl; defaults to `tencent/hy3-preview`; respects `modelRef` override (full slug preserved — **depends on v0.1 Task 21 fix**) | Test red |
-| 4 | 🟢 `src/adapters/claude-code/{llm-runner,index}.ts` + `src/adapters/index.ts` adds re-export | Tests green |
-| 5 | 🔴+🟢 `src/cli/context.test.ts` +2 cases (config.platform dispatch + `--platform` flag) → implement dispatcher in `src/cli/context.ts` + global option in `src/cli/index.ts` | Tests green |
-
-### Phase B — WP3.6 Hy3 smoke (2 commits, blocked on Q2)
+### Phase A — Adapter + auto-init (6 commits)
 
 | # | Action | Acceptance |
 |---|---|---|
-| 6 | Create `tests/fixtures/hy3-smoke/turns.json` (20 entries) + `README.md` — **blocked on Q2** | 20 entries, schema-valid |
-| 7 | Create `scripts/smoke-hy3.mjs` + `npm run smoke:hy3` script. Run locally; produce report. If <95% → document fallback activation in CHANGELOG, verify commented alt-config | Smoke <2min; report present; CHANGELOG entry |
+| A1 | 🔴 `src/adapters/claude-code/host-adapter.test.ts` — 4 cases: `getRuntimeContext()` returns `platform: "claude-code"`; `dataDir = <projectRoot>/.claude/memory`; sessionId synthesized from `CLAUDE_PROJECT_DIR + day`; explicit sessionId overrides | Test red |
+| A2 | 🟢 `src/adapters/claude-code/{host-adapter,llm-runner,index}.ts` + add `src/adapters/index.ts` re-export | Tests green |
+| A3 | 🔴 `src/cli/commands/init.test.ts` +1 case: `runInit({projectRoot, force: false, silent: true})` returns ok with no stdout (auto-init mode) | Test red |
+| A4 | 🟢 add `silent` flag to `runInit` (no message in result.message when true) + `--auto-init` global option in Commander wiring; each command checks for missing config + invokes `runInit({silent: true})` when `--auto-init` is on | Manual e2e: `claude-mem capture --auto-init` in fresh tmp dir writes L0 row + .claude/memory layout silently |
+| A5 | 🔴 `src/cli/context.test.ts` +2 cases: `loadContext` returns ClaudeCodeHostAdapter when `config.platform === "claude-code"`; `--platform` flag override beats config | Test red |
+| A6 | 🟢 dispatcher in `src/cli/context.ts` (which adapter to instantiate); global `--platform` option | Tests green |
 
-### Phase C — Hook templates + install (5 commits, blocked on Q3 for matcher decision)
+### Phase B — WP3.6 Hy3 smoke (2 commits)
 
 | # | Action | Acceptance |
 |---|---|---|
-| 8 | `claude-code-integration/templates/settings.json.template` (4 hook entries) + `hook-capture-wrapper.sh` | Template parses; wrapper +x; works on stub claude-mem mock |
-| 9 | `claude-code-integration/templates/.env.example` (3 vars) | File exists |
-| 10 | `claude-code-integration/install.sh` per §5 design | Two runs → no duplicates; settings.json valid; second run no-op |
-| 11 | `tests/integration/install-sh.test.ts` — 4 cases (fresh, idempotent, v12.7.5 conflict, unrelated keys preserved) | Tests green; temp-dir per case |
-| 12 | `claude-code-integration/README.md` (~120 lines) + `uninstall.sh` (~30 lines) | README renders; uninstall removes only 4 installed hooks |
+| B1 | ➕ `tests/fixtures/hy3-smoke/turns.json` (20 synthesized turns) + `README.md` (provenance + intended use) | 20 entries, schema-valid |
+| B2 | ➕ `scripts/smoke-hy3.mjs` + `npm run smoke:hy3` script + report writer | Smoke runs locally <2 min; report at `tests/output/hy3-smoke-report.json`; CHANGELOG entry with measured rate; if <95% → activate R1 fallback in CHANGELOG note |
+
+### Phase C — Global install + hooks (5 commits)
+
+| # | Action | Acceptance |
+|---|---|---|
+| C1 | ➕ `claude-code-integration/templates/settings.json.template` (4 hooks with `<ABS_BIN>` placeholder + `--auto-init` flag) + `hook-capture-wrapper.sh` (~40 lines, inline node JSON parse) | Template parses as JSON; wrapper +x |
+| C2 | ➕ `claude-code-integration/templates/.env.example` (OPENROUTER_API_KEY, VOYAGE_API_KEY, optional CLAUDE_MEM_LOG_LEVEL) | File present |
+| C3 | ➕ `claude-code-integration/install.sh` (global, captures `which claude-mem`, merges into `~/.claude/settings.json` via jq, dedup by event+matcher tuple, installs wrapper to `~/.claude/hooks/claude-mem/`) | Two runs → no duplicate hooks; idempotent; bails on missing `claude-mem` bin |
+| C4 | ➕ `tests/integration/install-sh.test.ts` — 4 cases: fresh install adds 4 hooks; rerun is idempotent; conflicting v12.7.5 detected → exit 1 unless --allow-coexist; unrelated user keys preserved | Tests green; uses tmp HOME |
+| C5 | ➕ `claude-code-integration/README.md` (~120 lines: install once, verify via `claude-mem stats`, troubleshooting, disable instructions) + `uninstall.sh` (~40 lines: removes global hooks, leaves data) | Uninstall removes only what install added |
 
 ### Phase D — Manual E2E + release (1 commit)
 
 | # | Action | Acceptance |
 |---|---|---|
-| 13 | Manual E2E per README "Verification": fresh project → `bash install.sh` → start `claude --debug` → confirm SessionStart recall appears in system context; do Edit; confirm L0 row in SQLite. Document in CHANGELOG. Tag `v0.2.0` (with user confirmation). | All 5 steps pass; CHANGELOG entry; tag pushed |
+| D1 | Manual E2E checklist run + CHANGELOG `## [0.2.0] — YYYY-MM-DD` entry + tag `v0.2.0` (with user confirmation per global rules) | E2E checklist: fresh `npm i -g` → `install.sh` → `cd ~/test-project` → `claude --debug` → SessionStart hook visibly fires (memory.log entry, recall stdout in system context); do an Edit → capture happens; `claude-mem stats` in test-project → counts > 0 |
 
-**Total: 13 commits, ~1090 lines new/changed across 15 new + 3 modified files.**
+**Total: 14 commits, ~1200 lines new/changed across ~16 new + ~5 modified files.**
 
-## 8. Open questions — BLOCKERS for Phase B+C
+## 8. Open questions
 
-| # | Question | Suggested default | Blocks |
-|---|---|---|---|
-| **Q1** | Does v0.1's `templates/config.default.json` include a `platform` key? If not, v0.2 adds it additively. | Assume not present; v0.2 adds with default `"standalone"`, documents in CHANGELOG. Low risk. | Task A.5 |
-| **Q2** | Hy3 smoke fixture dataset — **synthesize 20 fake turns** (fast, no PII, less realistic) or **extract 20 from real claude-mem v12.7.5 archive** (realistic, possible PII to redact)? | Need user input. Affects fidelity of R1 mitigation gate. | Task B.6 (blocks B.7) |
-| **Q3** | `PostToolUse` matcher scope — `Edit\|Write\|MultiEdit` only, or include `Bash`? Bash 10× more rows in L0; many noise (`ls`, `cat`); but losing it loses "what agent actually did" signal. | `Edit\|Write\|MultiEdit` only in v0.2; `Bash` opt-in via config flag in v0.3 once token economics observed. | Task C.8 |
+| # | Question | Resolution |
+|---|---|---|
+| Q1 | `config.default.json` adds `platform` field? | YES, additive, default `"standalone"`. Auto-init writes `"claude-code"` when `--auto-init` flag is set. |
+| Q2 | Hy3 smoke fixture dataset source | **Synthesize 20 hand-crafted turns.** User picked Variant A (PII-safe, deterministic). |
+| Q3 | `PostToolUse` matcher scope | `Edit\|Write\|MultiEdit` only. `Bash` opt-in via config flag deferred to v0.3. |
+| **NEW Q4** | If user has BOTH global hooks (this fork) AND per-project hooks (claude-mem v12.7.5) active in the same project, which wins? | Claude Code runs BOTH. Each writes to its own dir (`<project>/.claude/memory/` vs `~/.claude-mem/`). User can disable v12.7.5 hooks manually. We don't intervene. |
+| **NEW Q5** | npm-installed bin path stability across `npm i -g` versions — does `which claude-mem` always resolve the same path? | YES on a given machine for a given npm prefix. If user changes npm prefix or uninstalls + reinstalls under a different package manager (pnpm/yarn), they re-run `install.sh` (idempotent). |
 
-## 9. Reality-check (v0.2 vs v0.1 surface)
+All open. Ready to implement after `/codex:review`.
 
-15 contract assumptions verified against v0.1 SPEC. One gap surfaced (additive, see Q1). All others ✅. `StandaloneHostAdapter` is constructible per assumption; `RuntimeContext.platform` is already settable; `seed` confirmed dropped; LLM slug fix landing in v0.1 Task 21 — Phase A Task 3+4 has explicit dependency.
+## 9. Reality-check (v0.2 vs v0.1)
+
+15 contract assumptions from rev1 plus:
+- ✅ v0.1 ships `StandaloneHostAdapter` constructible per assumption (verified in master code at HEAD `9d31f51`)
+- ✅ v0.1 ships `StandaloneLLMRunnerFactory` with model-slug fix (Task 21)
+- ✅ v0.1 CLI exits 0 always (hook-friendly contract preserved)
+- ✅ `runInit` is idempotent (already verified by tests; safe to call from auto-init path)
+- ✅ `loadContext` throws on missing config — exactly the signal `--auto-init` needs to catch + bootstrap
 
 ## 10. Known tradeoffs (to fill after `/codex:review`)
 
-> _Pending — `/codex:review` will run after v0.1 ships, before Phase A starts._
+> _Pending — `/codex:review` runs immediately after this rev2 SPEC commits._
