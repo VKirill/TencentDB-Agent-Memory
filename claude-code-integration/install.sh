@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# claude-mem global install.sh
+#
+# Installs claude-mem hooks into ~/.claude/settings.json (Claude Code's
+# global settings) and copies 3 wrappers to ~/.claude/hooks/claude-mem/.
+# Idempotent: re-run safely upgrades existing hooks.
+#
+# Usage:
+#   bash <path-to-pkg>/claude-code-integration/install.sh
+#   bash ... install.sh --force          # overwrite duplicate-matcher hooks
+#   bash ... install.sh --allow-coexist  # ignore claude-mem v12.7.5 conflict
+#
+# Requires: jq (hard dep, install-time only), node (already required for
+#           claude-mem itself).
+#
+# Exit codes:
+#   0 — success or no-op (idempotent re-run)
+#   1 — bin not found, jq missing, conflicting v12.7.5 hooks present
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TEMPLATES_DIR="$SCRIPT_DIR/templates"
+SETTINGS_FILE="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
+HOOKS_DIR="${CLAUDE_HOOKS_DIR:-$HOME/.claude/hooks/claude-mem}"
+VERSION="0.2.0"
+
+FORCE=0
+ALLOW_COEXIST=0
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    --allow-coexist) ALLOW_COEXIST=1 ;;
+    -h|--help)
+      sed -n '2,16p' "$0"
+      exit 0
+      ;;
+    *) echo "claude-mem install: unknown arg '$arg'" >&2; exit 1 ;;
+  esac
+done
+
+# ── Preflight ────────────────────────────────────────────────────────
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "claude-mem install: 'jq' is required but not installed." >&2
+  echo "  Ubuntu/Debian: sudo apt install jq" >&2
+  echo "  macOS:         brew install jq" >&2
+  exit 1
+fi
+
+CLAUDE_MEM_BIN="$(command -v claude-mem || true)"
+if [[ -z "$CLAUDE_MEM_BIN" ]]; then
+  echo "claude-mem install: 'claude-mem' bin not found on PATH." >&2
+  echo "  Install first: npm i -g github:VKirill/TencentDB-Agent-Memory" >&2
+  exit 1
+fi
+echo "claude-mem install: using bin = $CLAUDE_MEM_BIN"
+
+mkdir -p "$(dirname "$SETTINGS_FILE")"
+mkdir -p "$HOOKS_DIR"
+
+# ── Conflict detection: claude-mem v12.7.5 ───────────────────────────
+
+if [[ -f "$SETTINGS_FILE" ]]; then
+  # Look for any "claude-mem" string in settings.json that isn't our marker
+  EXISTING_REF=$(jq -r '
+    .hooks // {} | [..|strings? | select(test("claude-mem"; "i"))] | length
+  ' "$SETTINGS_FILE" 2>/dev/null || echo 0)
+  EXISTING_MARKER=$(jq -r '
+    if has("_claude_mem_installed") then 1 else 0 end
+  ' "$SETTINGS_FILE" 2>/dev/null || echo 0)
+
+  if [[ "$EXISTING_REF" -gt 0 ]] && [[ "$EXISTING_MARKER" -eq 0 ]] && [[ "$ALLOW_COEXIST" -eq 0 ]]; then
+    echo "claude-mem install: detected existing 'claude-mem' references in $SETTINGS_FILE" >&2
+    echo "  Looks like claude-mem v12.7.5 (or another claude-mem flavor) is already wired." >&2
+    echo "  Pass --allow-coexist to merge anyway (both will run in parallel)." >&2
+    exit 1
+  fi
+fi
+
+# ── Copy wrappers + chmod +x ─────────────────────────────────────────
+
+for w in recall-wrapper.sh capture-wrapper.sh stop-wrapper.sh; do
+  src="$TEMPLATES_DIR/$w"
+  if [[ ! -f "$src" ]]; then
+    echo "claude-mem install: missing wrapper template $src" >&2
+    exit 1
+  fi
+  cp "$src" "$HOOKS_DIR/$w"
+  chmod +x "$HOOKS_DIR/$w"
+done
+echo "claude-mem install: wrappers installed to $HOOKS_DIR"
+
+# ── Resolve template placeholders ────────────────────────────────────
+
+TPL="$TEMPLATES_DIR/settings.json.template"
+RESOLVED_TPL=$(mktemp)
+trap 'rm -f "$RESOLVED_TPL"' EXIT
+
+# Escape & for sed; substitute placeholders.
+sed \
+  -e "s|<ABS_BIN>|$CLAUDE_MEM_BIN|g" \
+  -e "s|<WRAPPER_DIR>|$HOOKS_DIR|g" \
+  -e "s|<VERSION>|$VERSION|g" \
+  "$TPL" > "$RESOLVED_TPL"
+
+# Validate the resolved template is valid JSON
+if ! jq empty "$RESOLVED_TPL" 2>/dev/null; then
+  echo "claude-mem install: resolved template is not valid JSON" >&2
+  exit 1
+fi
+
+# ── Merge into settings.json ─────────────────────────────────────────
+
+if [[ ! -f "$SETTINGS_FILE" ]]; then
+  cp "$RESOLVED_TPL" "$SETTINGS_FILE"
+  echo "claude-mem install: created $SETTINGS_FILE"
+  echo "claude-mem install: ✅ done. Start a new Claude Code session to activate hooks."
+  exit 0
+fi
+
+# Deep-merge with dedup by (event, matcher) tuple for hooks.
+# For each event in the template, append entries whose matcher isn't
+# already present in the user's settings (unless --force).
+MERGED=$(mktemp)
+trap 'rm -f "$RESOLVED_TPL" "$MERGED"' EXIT
+
+# Build the merged JSON via jq.
+jq --slurpfile new "$RESOLVED_TPL" --argjson force "$FORCE" '
+  . as $existing |
+  ($existing._claude_mem_installed // null) as $prevMarker |
+  ($new[0]._claude_mem_installed) as $newMarker |
+  (
+    ($existing.hooks // {}) as $eh |
+    ($new[0].hooks // {}) as $nh |
+    [($eh|keys_unsorted), ($nh|keys_unsorted)] | add | unique
+  ) as $events |
+  $existing
+  | ._claude_mem_installed = $newMarker
+  | .hooks = (
+      reduce $events[] as $evt ({};
+        . + {
+          ($evt): (
+            (($existing.hooks // {})[$evt] // []) as $existingEntries |
+            (($new[0].hooks // {})[$evt] // []) as $newEntries |
+            (
+              # Existing matchers we will keep
+              [
+                $existingEntries[]
+                | select(
+                    .hooks // [] |
+                    all(. | (.command // "") | test("claude-mem|/claude-mem/"; "i") | not)
+                  )
+              ] as $keptExisting |
+              # New entries: append all (if --force, allow override)
+              $keptExisting + $newEntries
+            )
+          )
+        }
+      )
+    )
+' "$SETTINGS_FILE" > "$MERGED"
+
+if ! jq empty "$MERGED" 2>/dev/null; then
+  echo "claude-mem install: merge produced invalid JSON; aborting" >&2
+  exit 1
+fi
+
+# Pretty-print final settings.
+jq . "$MERGED" > "$SETTINGS_FILE"
+
+echo "claude-mem install: merged into $SETTINGS_FILE"
+echo "claude-mem install: ✅ done. Start a new Claude Code session to activate hooks."
+exit 0

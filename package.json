@@ -27,6 +27,7 @@
     "index.ts",
     "src/",
     "templates/",
+    "claude-code-integration/",
     "README.md",
     "CHANGELOG.md",
     "NOTICE.md",
