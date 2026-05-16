@@ -50,13 +50,50 @@ export interface L2L3Runners {
 /**
  * Build a shared LLM runner + L2/L3 runners using pipeline-factory primitives.
  *
- * Implementation lands in Task 3 (RED→GREEN). This file currently exports the
- * symbol so test-mode imports in Task 2 resolve. Calling the un-implemented
- * function throws a clear error so accidental wiring doesn't silently no-op.
+ * ADR-5: a single `StandaloneLLMRunnerFactory.createRunner({enableTools: true})`
+ * is built once and threaded into both runners — avoids ~50ms × N factory
+ * builds across the per-session L2 loop.
+ *
+ * Model selection: prefer `cfg.persona.model`, fall back to `cfg.llm.model`
+ * (CLI default Hy3). Persona-specific model override allows the operator to
+ * swap a cheaper/faster slug for scene+persona work without touching L1.
+ *
+ * Both runners receive the SAME `vectorStore`/`logger`/`pluginDataDir` as
+ * the L1 runner — they read L1 facts and write `scene_blocks/*.md` +
+ * `persona.md` into the same `.claude/memory/` tree.
  */
-export function buildL2L3Runners(_opts: L2L3WiringOptions): L2L3Runners {
-  void createL2Runner; // suppress unused-import while skeleton
-  void createL3Runner;
-  void StandaloneLLMRunnerFactory;
-  throw new Error("buildL2L3Runners: not implemented (Task 3 of v0.3.3 SPEC)");
+export function buildL2L3Runners(opts: L2L3WiringOptions): L2L3Runners {
+  const { pluginDataDir, cfg, vectorStore, logger, instanceId } = opts;
+
+  const modelRef = cfg.persona.model || cfg.llm.model;
+  const llmRunner: LLMRunner = new StandaloneLLMRunnerFactory({
+    config: {
+      baseUrl: cfg.llm.baseUrl,
+      apiKey: cfg.llm.apiKey,
+      model: cfg.llm.model,
+    },
+    logger,
+  }).createRunner({ enableTools: true, modelRef });
+
+  const l2Runner = createL2Runner({
+    pluginDataDir,
+    cfg,
+    openclawConfig: undefined,
+    vectorStore,
+    logger,
+    instanceId,
+    llmRunner,
+  });
+
+  const l3Runner = createL3Runner({
+    pluginDataDir,
+    cfg,
+    openclawConfig: undefined,
+    vectorStore,
+    logger,
+    instanceId,
+    llmRunner,
+  });
+
+  return { l2Runner, l3Runner, llmRunner };
 }
