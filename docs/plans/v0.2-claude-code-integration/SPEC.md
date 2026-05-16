@@ -76,20 +76,29 @@ After `npm i -g`, the bin lives at `$(npm bin -g)/claude-mem`. Hooks must find i
 - Install script captures `which claude-mem` at install time and writes the **absolute path** into the global settings.json hook command. No PATH lookup at hook runtime.
 - If `claude-mem` moves (npm upgrade), user re-runs `bash <pkg>/claude-code-integration/install.sh` — idempotent re-write.
 
-## 4. Hook command spec (revised for global + absolute path + auto-init)
+## 4. Hook command spec (revised for global + wrapper-mediated)
 
 All commands: cwd inherited from Claude Code (likely `$CLAUDE_PROJECT_DIR`). All exit 0 always. Bounded by 10s timeout.
 
-| Hook | Command | Notes |
-|---|---|---|
-| `SessionStart` | `<abs>/claude-mem recall --query "$(basename "$CLAUDE_PROJECT_DIR")" --limit 5 --platform claude-code --auto-init` | First session in a new project auto-inits the dir. Recall on empty memory returns "" → no stdout pollution. |
-| `UserPromptSubmit` | `<abs>/claude-mem recall --query - --limit 3 --platform claude-code --auto-init` (reads user prompt from stdin via inline node JSON parse) | Same auto-init path. |
-| `PostToolUse` (matcher: `Edit\|Write\|MultiEdit`) | `<abs>/claude-mem capture --platform claude-code --auto-init` (wrapper script translates hook JSON → `{user, assistant, metadata}`) | Auto-init ensures dir exists before capture. Wrapper runs in background, returns ≤500ms. |
-| `Stop` | `<abs>/claude-mem capture --platform claude-code --auto-init` (wrapper for session-summary) | Same. |
+**Critical contract issue addressed (codex round 1, P1.2 + P2):** Claude Code's hook stdin payloads are JSON envelopes that DO NOT match `capture`/`recall`'s expected stdin shapes. Every hook that consumes stdin MUST go through a translation step (the wrapper script). We do NOT change `capture`/`recall` to accept hook-shaped JSON — that would pollute the library contract used by terminal/library consumers.
 
-`<abs>` is the result of `which claude-mem` at install time, baked into the settings.json hook command string.
+| Hook | Hook stdin from Claude Code | Final command in settings.json | Notes |
+|---|---|---|---|
+| `SessionStart` | `{ "session_id", ... }` (ignored) | `<ABS_BIN> recall --query "$(basename "$CLAUDE_PROJECT_DIR")" --limit 5 --platform claude-code --auto-init` | Stdin not consumed (uses project dir name as query). Auto-init bootstraps `.claude/memory/` on first session in a new project. Recall on empty memory → "" → no stdout pollution. |
+| `UserPromptSubmit` | `{ "user_prompt": "...", "session_id": "..." }` | `<ABS_BIN_DIR>/../hooks/claude-mem/recall-wrapper.sh` (script reads stdin, extracts `user_prompt` via inline node, pipes to `<ABS_BIN> recall --query - --limit 3 --platform claude-code --auto-init`) | Wrapper script handles the JSON envelope. Without wrapper, recall would search for the entire JSON string and never match. |
+| `PostToolUse` (matcher: `Edit\|Write\|MultiEdit`) | `{ "tool_name", "tool_input", "tool_response", "session_id" }` | `<ABS_BIN_DIR>/../hooks/claude-mem/capture-wrapper.sh` (script translates to `{user, assistant, metadata:{toolName,sessionId,tags:["code-change"]}}` via inline node, pipes to `<ABS_BIN> capture --platform claude-code --auto-init`); wrapper backgrounds the capture with `&` and returns ≤500ms | Wrapper translates hook JSON → capture stdin shape. Backgrounded so the hook returns immediately. |
+| `Stop` | `{ "session_id", "stop_hook_active", "transcript"? }` | `<ABS_BIN_DIR>/../hooks/claude-mem/stop-wrapper.sh` (script translates to `{user:"session-end", assistant:"<transcript-or-empty>", metadata:{tags:["session-summary"], sessionId}}`, pipes to `<ABS_BIN> capture --platform claude-code --auto-init`); synchronous | Wrapper translates session-end envelope → capture's `{user, assistant}` shape. |
 
-**Wrapper script:** `claude-code-integration/templates/hook-capture-wrapper.sh` — translates Claude Code's hook stdin payload (different shape per hook) into `capture`'s expected `{user, assistant, metadata}` JSON via inline node one-liner. No jq dep.
+`<ABS_BIN>` = output of `which claude-mem` at install time, baked into settings.json. `<ABS_BIN_DIR>` = `dirname` of that.
+
+**Wrapper scripts** (3 files, ~30-40 lines each, all in `claude-code-integration/templates/`):
+- `recall-wrapper.sh` — extracts `user_prompt` from stdin JSON, pipes to recall
+- `capture-wrapper.sh` — translates PostToolUse envelope, pipes to capture (backgrounded)
+- `stop-wrapper.sh` — translates Stop envelope, pipes to capture (synchronous)
+
+All wrappers use inline `node -e "..."` for JSON parsing. No `jq` runtime dep (jq is only an install-time dep for `install.sh` merging settings.json).
+
+Wrappers installed by `install.sh` to `~/.claude/hooks/claude-mem/` (chmod +x).
 
 ## 5. `install.sh` design (revised — global, not per-project)
 
@@ -134,11 +143,11 @@ All commands: cwd inherited from Claude Code (likely `$CLAUDE_PROJECT_DIR`). All
 
 | # | Action | Acceptance |
 |---|---|---|
-| C1 | ➕ `claude-code-integration/templates/settings.json.template` (4 hooks with `<ABS_BIN>` placeholder + `--auto-init` flag) + `hook-capture-wrapper.sh` (~40 lines, inline node JSON parse) | Template parses as JSON; wrapper +x |
+| C1 | ➕ `claude-code-integration/templates/settings.json.template` (4 hooks with `<ABS_BIN>` + `<ABS_BIN_DIR>` placeholders + `--auto-init` flag) + 3 wrappers: `recall-wrapper.sh`, `capture-wrapper.sh`, `stop-wrapper.sh` (~30-40 lines each, inline node JSON parse, no jq dep) | Template parses as JSON; wrappers +x; `node`-based JSON parse verified against canonical hook payloads |
 | C2 | ➕ `claude-code-integration/templates/.env.example` (OPENROUTER_API_KEY, VOYAGE_API_KEY, optional CLAUDE_MEM_LOG_LEVEL) | File present |
-| C3 | ➕ `claude-code-integration/install.sh` (global, captures `which claude-mem`, merges into `~/.claude/settings.json` via jq, dedup by event+matcher tuple, installs wrapper to `~/.claude/hooks/claude-mem/`) | Two runs → no duplicate hooks; idempotent; bails on missing `claude-mem` bin |
-| C4 | ➕ `tests/integration/install-sh.test.ts` — 4 cases: fresh install adds 4 hooks; rerun is idempotent; conflicting v12.7.5 detected → exit 1 unless --allow-coexist; unrelated user keys preserved | Tests green; uses tmp HOME |
-| C5 | ➕ `claude-code-integration/README.md` (~120 lines: install once, verify via `claude-mem stats`, troubleshooting, disable instructions) + `uninstall.sh` (~40 lines: removes global hooks, leaves data) | Uninstall removes only what install added |
+| C3 | **✏️ `package.json` files[]: add `claude-code-integration/`** + ➕ `claude-code-integration/install.sh` (global, captures `which claude-mem`, merges into `~/.claude/settings.json` via jq, dedup by event+matcher tuple, installs wrappers to `~/.claude/hooks/claude-mem/`, chmod +x). **CRITICAL (codex round 1, P1.1):** without the files[] update, `npm i -g github:...` ships a package without install.sh and the documented install flow fails with "No such file or directory". | Two runs → no duplicate hooks; idempotent; bails on missing `claude-mem` bin; `npm pack --dry-run` lists `claude-code-integration/**` |
+| C4 | ➕ `tests/integration/install-sh.test.ts` — 5 cases: fresh install adds 4 hooks; rerun is idempotent; conflicting v12.7.5 detected → exit 1 unless --allow-coexist; unrelated user keys preserved; wrappers installed to `~/.claude/hooks/claude-mem/` with +x bits | Tests green; uses tmp HOME |
+| C5 | ➕ `claude-code-integration/README.md` (~120 lines: install once, verify via `claude-mem stats`, troubleshooting, disable instructions) + `uninstall.sh` (~40 lines: removes global hooks + wrapper dir, leaves per-project memory dirs) | Uninstall removes only what install added |
 
 ### Phase D — Manual E2E + release (1 commit)
 
@@ -169,6 +178,12 @@ All open. Ready to implement after `/codex:review`.
 - ✅ `runInit` is idempotent (already verified by tests; safe to call from auto-init path)
 - ✅ `loadContext` throws on missing config — exactly the signal `--auto-init` needs to catch + bootstrap
 
-## 10. Known tradeoffs (to fill after `/codex:review`)
+## 10. Known tradeoffs (from `/codex:review` round 1, 2026-05-16)
 
-> _Pending — `/codex:review` runs immediately after this rev2 SPEC commits._
+| # | Finding | Disposition |
+|---|---|---|
+| C1 (P1) | `claude-code-integration/` not in `package.json:files[]` → `npm i -g github:...` would ship without `install.sh`, documented flow fails | **Expanded Task C3** to include the `package.json files[]` update. Acceptance: `npm pack --dry-run` lists `claude-code-integration/**`. |
+| C2 (P1) | Hook command spec for `PostToolUse` + `Stop` called `claude-mem capture` directly, but Claude Code stdin shape ≠ capture's expected `{user, assistant}` shape → 0 L0 rows, silent fail | **Rewrote §4 hook command table** to use 3 wrapper scripts (`recall-wrapper.sh`, `capture-wrapper.sh`, `stop-wrapper.sh`). Wrappers translate Claude Code's envelope shapes → capture/recall stdin shapes via inline node JSON parse. Library contract for `capture`/`recall` preserved unchanged. |
+| C3 (P2) | `UserPromptSubmit` hook said `recall --query -` reads stdin verbatim, but stdin is `{user_prompt, session_id, ...}` JSON → recall searches for the JSON string and never matches | **Same wrapper approach** — `recall-wrapper.sh` extracts `user_prompt` and pipes to recall. Codified in §4. |
+
+Round-2 codex review runs immediately after this commit. Per orchestrator policy (max 2 SPEC review rounds), if round 2 reveals new P1/P2 → fix and proceed without round 3 unless user requests.
