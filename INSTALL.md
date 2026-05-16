@@ -126,22 +126,28 @@ python3 -c "import json; print(json.load(open('$HOME/.claude/settings.json'))['m
 
 ---
 
-## Step 4 — Add projects to the auto-extract allowlist
+## Step 4 — (Optional) Pre-register projects in the allowlist
 
-The PM2 scheduler reads `~/.claude/claude-mem-projects.txt` every tick to know
-which projects to process. **Without this list, nothing happens automatically.**
+The PM2 scheduler reads `~/.claude/claude-mem-projects.txt` every tick to
+know which projects to process.
+
+**Since v0.4.1, this step is optional.** Starting Claude Code in any project
+auto-adds the project's absolute path to the allowlist via the SessionStart
+hook (idempotent — no duplicate entries). Use Step 4 only if you want to
+pre-populate the allowlist before opening Claude Code in a project, or if
+you want to add a project where you'll never run Claude Code interactively.
 
 ```bash
-# Add your projects (one absolute path per line)
+# Optional: pre-register specific projects
 echo "$HOME/apps/your-project" >> ~/.claude/claude-mem-projects.txt
 echo "$HOME/code/another-project" >> ~/.claude/claude-mem-projects.txt
 ```
 
-You can edit this file at any time — the scheduler hot-reloads every tick (no
-restart required).
+You can edit this file at any time — the scheduler hot-reloads every tick
+(no restart required).
 
-Each path you add will get its own `.claude/memory/` directory on first hook
-invocation (auto-init).
+Each path in the list gets its own `.claude/memory/` directory on first
+hook invocation (auto-init).
 
 ---
 

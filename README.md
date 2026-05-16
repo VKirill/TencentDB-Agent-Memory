@@ -56,8 +56,10 @@ chmod 600 ~/.claude/claude-mem.env
 # 3. Wire Claude Code hooks + MCP server (idempotent — safe to re-run)
 bash $(npm root -g)/@vkirill/tencentdb-memory-claude-code/claude-code-integration/install.sh
 
-# 4. Add the projects you want auto-extracted to the allowlist
-echo "$HOME/your-project" >> ~/.claude/claude-mem-projects.txt
+# 4. (Optional) Pre-register projects to the allowlist
+#    Starting Claude Code in any project auto-adds it on SessionStart (v0.4.1+).
+#    Skip unless you want to populate the allowlist before first session.
+# echo "$HOME/your-project" >> ~/.claude/claude-mem-projects.txt
 
 # 5. (Optional) Start the PM2 daemon that runs `extract` every 30 minutes
 pm2 start ~/.claude/hooks/claude-mem/scheduler.cjs --name claude-mem-scheduler

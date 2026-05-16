@@ -9,6 +9,38 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.4.1] — 2026-05-16
+
+UX patch: eliminate the manual allowlist-append step from install.
+
+### Changed
+- **SessionStart hook** now has TWO commands: first auto-registers the
+  current project to `~/.claude/claude-mem-projects.txt` (idempotent via
+  `grep -qxF || echo`), second runs `claude-mem recall` as before. Effect:
+  PM2 scheduler picks up new projects automatically after first Claude Code
+  session in them — no manual `echo "$HOME/project" >> ...` needed.
+- **`install.sh`**: extended the `isOurs` jq guard to also match
+  `claude-mem-projects.txt` literal so re-running install over an existing
+  v0.4.0 entry replaces it cleanly (no duplicate SessionStart entries).
+- `package.json` + `src/cli/index.ts`: 0.4.0 → 0.4.1.
+
+### Verified
+- 91/91 tests still passing (no `src/` code touched).
+- Install dry-run on tmp HOME produces SessionStart entry with 2 hooks
+  (auto-register first, recall second).
+- Idempotency: triple-call of auto-register hook on same project leaves
+  exactly 1 line in allowlist.
+- Reinstall over v0.4.0 entry produces 1 matcher with 2 hooks (not 4).
+
+### Migration
+- Existing users: re-run `install.sh` after upgrading; the old single-hook
+  SessionStart entry is replaced with the new 2-hook version automatically.
+- README step 4 ("add projects to allowlist manually") is now optional —
+  documented for users who want to pre-register projects before first
+  Claude Code session there. Step 4 deletion in README is cosmetic only.
+
+---
+
 ## [0.4.0] — 2026-05-16
 
 **Major release**: MCP server + repo rebrand + README/INSTALL rewrite. The
