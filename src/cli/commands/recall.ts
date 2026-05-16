@@ -20,8 +20,12 @@ import path from "node:path";
 import { loadContextOrAutoInit } from "../context.js";
 import { initStores, type PipelineLogger } from "../../utils/pipeline-factory.js";
 import { runVectorRecall } from "./recall-vector.js";
+import { readPersonaContext, readSceneIndexContext, composeRecallOutput } from "./recall-context.js";
 
-const MAX_OUTPUT_CHARS = 4000;
+// v0.3.5: matches text is wrapped in <recall-matches>...</recall-matches> (33 chars overhead).
+// Cap matches at 3967 so the total <recall-matches>…</recall-matches> fits the 4000-char
+// hook injection budget that consuming hooks and existing tests rely on.
+const MAX_OUTPUT_CHARS = 3967;
 const RECORD_SEPARATOR = "\n---\n";
 const CONVERSATIONS_SUBDIR = "conversations";
 
@@ -41,6 +45,16 @@ export interface RunRecallOptions {
    * (useful for debugging, no-key environments, or speed-critical UPS hooks).
    */
   vector?: boolean;
+  /**
+   * v0.3.5: prepend persona.md content as <persona-context> block. Default true.
+   * Set to false (CLI `--no-persona` flag) to skip persona injection.
+   */
+  includePersona?: boolean;
+  /**
+   * v0.3.5: append scene index as <scene-index> block. Default true.
+   * Set to false (CLI `--no-scenes` flag) to skip scene index injection.
+   */
+  includeScenes?: boolean;
 }
 
 export interface RunRecallResult {
@@ -90,53 +104,70 @@ export async function runRecall(opts: RunRecallOptions): Promise<RunRecallResult
   // Returns null on any fallback condition (no key, empty L1, degraded
   // store, embed failure, vector miss). Linear control flow per ADR-2.
   const vectorLines = await tryVectorPath(ctx, rawQuery, opts);
+  let matchesText: string;
+  let matchCount: number;
+
   if (vectorLines && vectorLines.length > 0) {
-    const text = composeBounded(vectorLines, MAX_OUTPUT_CHARS);
-    return { ok: true, text, matchCount: vectorLines.length };
-  }
+    matchesText = composeBounded(vectorLines, MAX_OUTPUT_CHARS);
+    matchCount = vectorLines.length;
+  } else {
+    // ── Keyword fallback (v0.2 behavior preserved) ──────────────────
+    if (!fs.existsSync(convDir)) {
+      matchesText = "";
+      matchCount = 0;
+    } else {
+      // Collect all JSONL files (newest by file name first — files are named
+      // by date bucket YYYY-MM-DD.jsonl per upstream l0-recorder).
+      const files = listJsonlFiles(convDir).sort().reverse();
 
-  // ── Keyword fallback (v0.2 behavior preserved) ────────────────────
-  if (!fs.existsSync(convDir)) {
-    return { ok: true, text: "", matchCount: 0 };
-  }
-
-  // Collect all JSONL files (newest by file name first — files are named
-  // by date bucket YYYY-MM-DD.jsonl per upstream l0-recorder).
-  const files = listJsonlFiles(convDir).sort().reverse();
-
-  // Stream-read; group consecutive user/assistant pairs into a single
-  // "turn" string for matching. Stop once we've collected `limit` matches
-  // AND output budget reached.
-  const matches: string[] = [];
-  outer: for (const file of files) {
-    const lines = safeReadLines(file);
-    // Iterate newest-first within each file too
-    let pendingUser: L0Message | undefined;
-    const turns: Array<{ user: L0Message; assistant: L0Message }> = [];
-    for (const line of lines) {
-      const msg = safeParseLine(line);
-      if (!msg) continue;
-      if (msg.role === "user") {
-        pendingUser = msg;
-      } else if (msg.role === "assistant" && pendingUser) {
-        turns.push({ user: pendingUser, assistant: msg });
-        pendingUser = undefined;
+      // Stream-read; group consecutive user/assistant pairs into a single
+      // "turn" string for matching. Stop once we've collected `limit` matches
+      // AND output budget reached.
+      const matches: string[] = [];
+      outer: for (const file of files) {
+        const lines = safeReadLines(file);
+        // Iterate newest-first within each file too
+        let pendingUser: L0Message | undefined;
+        const turns: Array<{ user: L0Message; assistant: L0Message }> = [];
+        for (const line of lines) {
+          const msg = safeParseLine(line);
+          if (!msg) continue;
+          if (msg.role === "user") {
+            pendingUser = msg;
+          } else if (msg.role === "assistant" && pendingUser) {
+            turns.push({ user: pendingUser, assistant: msg });
+            pendingUser = undefined;
+          }
+        }
+        // Newest first within file
+        for (let i = turns.length - 1; i >= 0; i--) {
+          const t = turns[i];
+          const blob = `${t.user.content ?? ""}\n${t.assistant.content ?? ""}`.toLowerCase();
+          if (blob.includes(query)) {
+            matches.push(formatTurn(t.user, t.assistant));
+            if (matches.length >= opts.limit) break outer;
+          }
+        }
       }
-    }
-    // Newest first within file
-    for (let i = turns.length - 1; i >= 0; i--) {
-      const t = turns[i];
-      const blob = `${t.user.content ?? ""}\n${t.assistant.content ?? ""}`.toLowerCase();
-      if (blob.includes(query)) {
-        matches.push(formatTurn(t.user, t.assistant));
-        if (matches.length >= opts.limit) break outer;
-      }
+
+      matchesText = composeBounded(matches, MAX_OUTPUT_CHARS);
+      matchCount = matches.length;
     }
   }
 
-  // Compose output respecting MAX_OUTPUT_CHARS
-  const text = composeBounded(matches, MAX_OUTPUT_CHARS);
-  return { ok: true, text, matchCount: matches.length };
+  // ── v0.3.5: compose persona + scene-index + matches ──────────────
+  const persona =
+    opts.includePersona !== false ? readPersonaContext(ctx.dataDir) : null;
+  const sceneIndex =
+    opts.includeScenes !== false ? await readSceneIndexContext(ctx.dataDir) : null;
+
+  const text = composeRecallOutput({
+    persona,
+    sceneIndex,
+    matches: matchesText || null,
+  });
+
+  return { ok: true, text, matchCount };
 }
 
 function listJsonlFiles(dir: string): string[] {

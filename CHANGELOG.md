@@ -9,6 +9,57 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.3.5] — 2026-05-16
+
+`claude-mem recall` now prepends a `<persona-context>` block with the full
+persona.md content and appends a `<scene-index>` block listing scene files
+sorted by heat (desc). Existing L1/keyword matches are wrapped in
+`<recall-matches>`. The SessionStart hook picks up stable identity context
+and thematic scenes on every session start without any hook-script change.
+
+### Added
+- **`src/cli/commands/recall-context.ts`** (new, ~130 LOC) — three helpers:
+  `readPersonaContext` (reads persona.md, caps at 6000 bytes, wraps in
+  `<persona-context>`), `readSceneIndexContext` (reads scene_index.json via
+  `readSceneIndex()`, sorts by heat desc, drops low-heat entries on 2000-byte
+  overflow, wraps in `<scene-index>`), `composeRecallOutput` (assembles all
+  three sections in order, omits null/empty sections silently, joins with
+  `"\n\n"`). Constants `PERSONA_INJECTION_MAX_BYTES=6000`,
+  `SCENE_INDEX_MAX_BYTES=2000` exported for consumer use.
+- **`src/cli/commands/recall-context.test.ts`** (new, ~180 LOC) — 9 unit
+  tests covering: persona present/absent/truncated, scene index sorted heat
+  desc / empty array / absent file, composeRecallOutput ordering and null
+  section omission. Uses real fs temp dirs (no import mocking).
+- **`src/cli/index.ts`** — `--no-persona` and `--no-scenes` Commander flags
+  on the `recall` subcommand, mirroring the existing `--no-vector` pattern.
+  Threaded into `runRecall` as `includePersona`/`includeScenes`.
+
+### Changed
+- **`src/cli/commands/recall.ts`** — `RunRecallOptions` extended with
+  `includePersona?` and `includeScenes?` (both default true). After the
+  vector/keyword match path resolves `matchesText`, calls
+  `readPersonaContext`+`readSceneIndexContext` and composes final output via
+  `composeRecallOutput`. `MAX_OUTPUT_CHARS` reduced from 4000 to 3967 to
+  keep the total `<recall-matches>…</recall-matches>` (33 chars tag overhead)
+  within the 4000-char hook injection budget that existing tests assert.
+- **`src/cli/commands/recall.test.ts`** — +2 regression tests: (1) runRecall
+  with persona.md + scene_index.json present → output contains all three XML
+  tags in correct order; (2) `includePersona:false + includeScenes:false` →
+  no persona/scene tags in output.
+
+### Verified
+- **83 tests** green (72 baseline + 9 new recall-context + 2 new regression).
+- **Build** (`tsdown`) clean, no TypeScript errors.
+- **lint:gate** (`check-no-openclaw.sh`) passes.
+- **Real smoke** on `~/.claude/.claude/memory/` (persona.md present,
+  2 scene files, L1 vector store populated): output starts with
+  `<persona-context>` (4922-byte persona), contains `<scene-index>` listing
+  both scene files sorted heat desc (2→1), contains `<recall-matches>` with
+  L1 vector results for query "orchestrator" — all three sections present
+  and correctly ordered.
+
+---
+
 ## [0.3.4] — 2026-05-16
 
 Full English localization of the four LLM prompts (L1 extraction, L1 dedup,
