@@ -18,6 +18,7 @@ import { runRecall } from "./commands/recall.js";
 import { runStats, formatStatsReport } from "./commands/stats.js";
 import { runExtract, formatExtractSummary } from "./commands/extract.js";
 
+
 export function buildCli(): Command {
   const program = new Command();
 
@@ -142,6 +143,18 @@ export function buildCli(): Command {
       // init/capture/recall/stats which always exit 0 for hook safety.
       process.exit(result.exitCode);
     });
+
+  // ── v0.4.0: MCP server subcommand ──────────────────────────────────────
+  const mcpCmd = new Command("mcp").description("MCP server commands");
+  mcpCmd.addCommand(
+    new Command("serve")
+      .description("Start the MCP server on stdio for Claude Code")
+      .action(async () => {
+        const { runMcpServeCommand } = await import("./commands/mcp-serve.js");
+        await runMcpServeCommand();
+      }),
+  );
+  program.addCommand(mcpCmd);
 
   return program;
 }
