@@ -11,7 +11,7 @@ by **[@VKirill](https://github.com/VKirill)** · 📢 [Telegram channel: @pomoga
 
 🌐 **English** · [Русский](./README.ru.md)
 
-[![npm](https://img.shields.io/badge/npm-v0.4.2-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
+[![npm](https://img.shields.io/badge/npm-v0.5.0-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.16-brightgreen)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-server-orange)](https://modelcontextprotocol.io)
@@ -54,7 +54,7 @@ and a Voyage AI API key. See [INSTALL.md](./INSTALL.md) for full details.
 
 ```bash
 # 1. Install
-npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.4.2
+npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.5.0
 
 # 2. Put your keys in ~/.claude/claude-mem.env
 cat > ~/.claude/claude-mem.env <<'EOF'
@@ -79,8 +79,8 @@ pm2 save
 Verify:
 
 ```bash
-claude-mem --version    # → 0.4.2
-claude-mem stats        # → memory state for the current project
+tencentdb-mem --version    # → 0.5.0
+tencentdb-mem stats        # → memory state for the current project
 ```
 
 Then start a new Claude Code session in any project from the allowlist. Within
@@ -108,7 +108,7 @@ in the session-start context, and Claude will be able to call the MCP tools.
                        └──────────┼───────────────────────────┘
                                   │
                                   ▼
-                       Stop hook → claude-mem capture
+                       Stop hook → tencentdb-mem capture
                                   │
                                   ▼
     ┌──────────────────────────────────────────────────────────────────┐
@@ -122,7 +122,7 @@ in the session-start context, and Claude will be able to call the MCP tools.
     └─────────────────▲────────────────────────────────────────────────┘
                       │
                       │  PM2 scheduler (every 30 min) OR manual:
-                      │      claude-mem extract
+                      │      tencentdb-mem extract
                       │
                       └─────────  L0 → L1 → L2 → L3 pipeline
 ```
@@ -132,7 +132,7 @@ in the session-start context, and Claude will be able to call the MCP tools.
 | Layer | What it stores | When it runs | LLM cost |
 |---|---|---|---|
 | **L0** | Raw `{user, assistant}` turns from every conversation | After every assistant response (Stop hook) | $0 |
-| **L1** | Structured facts ("Kirill uses TS strict mode", "deploys via PM2") with type (`persona`/`episodic`/`instruction`) and priority | PM2 scheduler tick if new L0 turns exist; or `claude-mem extract` manually | ~$0.01-0.05 / tick (Hy3) or ~$0.10-0.30 (Sonnet 4.6) |
+| **L1** | Structured facts ("Kirill uses TS strict mode", "deploys via PM2") with type (`persona`/`episodic`/`instruction`) and priority | PM2 scheduler tick if new L0 turns exist; or `tencentdb-mem extract` manually | ~$0.01-0.05 / tick (Hy3) or ~$0.10-0.30 (Sonnet 4.6) |
 | **L2** | Thematic scene Markdown files (e.g. `server-infrastructure-and-deployment.md`), capacity-capped at 15, auto-merged when full | Same `extract` run, after L1 produces new facts | ~$0.01-0.02 / tick |
 | **L3** | `persona.md` — 8-section coder profile (Stack / Infrastructure / Workflow conventions / Hard rules / Active projects / Communication / Decision patterns / Open) | When `PersonaTrigger` fires (cold start, every N memories, recovery, explicit request) | ~$0.05-0.15 / regeneration |
 
@@ -217,17 +217,17 @@ If you want to record conversations only manually:
 ## Manual commands
 
 ```bash
-claude-mem init                       # bootstrap .claude/memory/ in cwd
-claude-mem capture                    # read {user, assistant} JSON on stdin, write to L0
-claude-mem recall --query "rate limit" --limit 5
-                                       # output persona + scene index + L1/L0 matches
-claude-mem recall --no-persona --no-scenes --query "..."
-                                       # match-only output (v0.3.4 shape)
-claude-mem extract                    # run L1 → L2 → L3 pipeline once
-claude-mem extract --dry-run          # enumerate sessions without LLM calls
-claude-mem extract --max-sessions 1   # process at most N sessions this run
-claude-mem stats                      # database statistics
-claude-mem mcp serve                  # MCP server on stdio (Claude Code calls this)
+tencentdb-mem init                       # bootstrap .claude/memory/ in cwd
+tencentdb-mem capture                    # read {user, assistant} JSON on stdin, write to L0
+tencentdb-mem recall --query "rate limit" --limit 5
+                                         # output persona + scene index + L1/L0 matches
+tencentdb-mem recall --no-persona --no-scenes --query "..."
+                                         # match-only output (v0.3.4 shape)
+tencentdb-mem extract                    # run L1 → L2 → L3 pipeline once
+tencentdb-mem extract --dry-run          # enumerate sessions without LLM calls
+tencentdb-mem extract --max-sessions 1   # process at most N sessions this run
+tencentdb-mem stats                      # database statistics
+tencentdb-mem mcp serve                  # MCP server on stdio (Claude Code calls this)
 ```
 
 ---
@@ -241,7 +241,7 @@ set the env var:
 export CLAUDE_MEM_TASK_CAPTURE=1
 ```
 
-After each completed task, the orchestrator will spawn `claude-mem capture`
+After each completed task, the orchestrator will spawn `tencentdb-mem capture`
 with a synthetic turn describing what was done. Future sessions can then
 recall `TASK-NNN` and see the completion summary.
 
@@ -274,7 +274,7 @@ recall `TASK-NNN` and see the completion summary.
 
 ## Troubleshooting
 
-**`claude-mem extract` says "OPENROUTER_API_KEY not set"**
+**`tencentdb-mem extract` says "OPENROUTER_API_KEY not set"**
 
 Source the env file in your shell, or check `~/.claude/claude-mem.env` exists
 with mode 600 and contains the key. The CLI auto-loads `~/.claude/claude-mem.env`
@@ -308,7 +308,7 @@ project has 50+ sessions and L3 needs more time.
 
 | | |
 |---|---|
-| Version | 0.4.0 |
+| Version | 0.5.0 |
 | Tests | 91 passing |
 | Stack | Node 22 · TypeScript · SQLite · Voyage embeddings · OpenRouter |
 | License | MIT (see [LICENSE](./LICENSE) and [NOTICE.md](./NOTICE.md) for upstream attribution) |

@@ -37,24 +37,24 @@ is operational: run these commands, get a working install.
 ### Optional but strongly recommended
 
 - **PM2** — for the auto-extract daemon. `npm i -g pm2`. Without PM2 you'd
-  have to run `claude-mem extract` manually in each project.
+  have to run `tencentdb-mem extract` manually in each project.
 
 ---
 
 ## Step 1 — Install the package
 
 ```bash
-npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.4.0
+npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.5.0
 ```
 
-This pulls the v0.4.0 tag from GitHub and installs the `claude-mem` binary
-to your global npm bin directory (`$(npm root -g)/.bin/claude-mem`).
+This pulls the v0.5.0 tag from GitHub and installs the `tencentdb-mem` binary
+to your global npm bin directory (`$(npm root -g)/.bin/tencentdb-mem`).
 
 Verify:
 
 ```bash
-claude-mem --version
-# → 0.4.0
+tencentdb-mem --version
+# → 0.5.0
 ```
 
 If the command isn't found, ensure your npm global bin directory is on your
@@ -106,13 +106,13 @@ bash $(npm root -g)/@vkirill/tencentdb-memory-claude-code/claude-code-integratio
 You should see output like:
 
 ```
-[install] using claude-mem bin: /home/you/.npm-global/bin/claude-mem
+[install] using bin: /home/you/.npm-global/bin/tencentdb-mem
 [install] copied scheduler.cjs (0755)
 [install] copied recall-wrapper.sh (0755)
 [install] copied stop-wrapper.sh (0755)
 [install] env file ~/.claude/claude-mem.env: already exists, skipping (mode 600)
 [install] claude-mem-projects.txt: created at ~/.claude/claude-mem-projects.txt
-[install] settings.json: registered claude-mem MCP server
+[install] settings.json: registered tencentdb-mem MCP server
 [install] settings.json: hooks (SessionStart, UserPromptSubmit, Stop, PostToolUse) wired
 [install] done.
 ```
@@ -121,7 +121,7 @@ Verify the MCP server entry in the correct file:
 
 ```bash
 python3 -c "import json; print(json.load(open('$HOME/.claude.json'))['mcpServers'].get('tencentdb-memory','NOT REGISTERED'))"
-# → {'type': 'stdio', 'command': '/home/you/.npm-global/bin/claude-mem', 'args': ['mcp', 'serve']}
+# → {'type': 'stdio', 'command': '/home/you/.npm-global/bin/tencentdb-mem', 'args': ['mcp', 'serve']}
 ```
 
 ---
@@ -159,7 +159,7 @@ pm2 save                 # persist across reboots
 pm2 startup              # follow the printed instructions to enable systemd startup
 ```
 
-The scheduler runs `claude-mem extract` in each allowlisted project every
+The scheduler runs `tencentdb-mem extract` in each allowlisted project every
 30 minutes (configurable via `CLAUDE_MEM_INTERVAL_MIN`).
 
 Verify it's running:
@@ -194,7 +194,7 @@ If everything is wired:
 
 On the **first session** in a fresh project, you won't see persona/scenes
 yet — they'll appear after PM2 has run extract at least once on that project
-(or run `claude-mem extract` manually to force it).
+(or run `tencentdb-mem extract` manually to force it).
 
 ---
 
@@ -209,7 +209,7 @@ source ~/.bashrc
 ```
 
 Each completed task now writes a synthetic turn to the project's memory,
-making it recallable later via `claude-mem recall "TASK-NNN"`.
+making it recallable later via `tencentdb-mem recall "TASK-NNN"`.
 
 ---
 
@@ -243,7 +243,7 @@ pm2 save
 rm -rf ~/.claude/hooks/claude-mem/
 
 # 3. Remove MCP + hook entries from settings.json (manual edit or use jq)
-#    Look for "claude-mem" in mcpServers and any claude-mem-* paths in hooks arrays
+#    Look for "tencentdb-memory" in mcpServers and any tencentdb-mem-* paths in hooks arrays
 
 # 4. Uninstall the npm package
 npm uninstall -g @vkirill/tencentdb-memory-claude-code
@@ -260,12 +260,12 @@ manually if you want a fully clean uninstall.
 
 ## Troubleshooting
 
-### "command not found: claude-mem"
+### "command not found: tencentdb-mem"
 
 ```bash
 # Find global npm bin
 npm root -g
-# Look in <result>/.bin/claude-mem — does it exist?
+# Look in <result>/.bin/tencentdb-mem — does it exist?
 
 # If yes, ensure parent dir is on PATH:
 echo $PATH | tr ':' '\n' | grep "$(npm root -g | sed s/lib.node_modules/bin/)"
@@ -292,7 +292,7 @@ at the resolved (final) path.
 ```bash
 # Force a manual extract:
 cd /your/project
-claude-mem extract
+tencentdb-mem extract
 
 # Inspect what happened:
 cat .claude/memory/scheduler.log 2>/dev/null   # if extracted via PM2
@@ -313,7 +313,7 @@ python3 -c "import json; print(json.load(open('$HOME/.claude.json')).get('mcpSer
 printf '%s\n%s\n' \
   '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{}},"id":1}' \
   '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}' \
-  | timeout 5 claude-mem mcp serve 2>/dev/null
+  | timeout 5 tencentdb-mem mcp serve 2>/dev/null
 
 # Should print initialize + tools/list responses with 4 tools
 ```
@@ -346,7 +346,7 @@ with 100+ session-keys queued at once (e.g. backfill from old JSONL files), it
 might not complete in one tick.
 
 Solutions:
-- Run `claude-mem extract --max-sessions 5` manually to process in chunks
+- Run `tencentdb-mem extract --max-sessions 5` manually to process in chunks
 - Increase `DEFAULT_EXTRACT_TIMEOUT_MS` in `scheduler.cjs` (default 15 min)
 - Switch `extraction.model` to a faster (cheaper) model temporarily
 
@@ -363,7 +363,7 @@ Solutions:
 | `~/.claude/claude-mem-projects.txt` | PM2 extract allowlist | you |
 | `~/.claude.json` | MCP server registration | install.sh patches |
 | `~/.claude/settings.json` | Hook registration (Claude Code hooks only) | install.sh patches |
-| `<project>/.claude/memory/` | Per-project memory state (L0/L1/L2/L3) | claude-mem CLI |
+| `<project>/.claude/memory/` | Per-project memory state (L0/L1/L2/L3) | tencentdb-mem CLI |
 | `~/.pm2/` | PM2 process state | pm2 |
 
 ---

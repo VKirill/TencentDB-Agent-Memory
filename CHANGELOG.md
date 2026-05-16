@@ -9,6 +9,45 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.5.0] — 2026-05-17
+
+**BREAKING:** CLI binary renamed `claude-mem` → `tencentdb-mem` to eliminate
+Anthropic brand collision (the old name read as if it were an official
+Anthropic tool; align to the upstream TencentDB brand we openly fork from).
+
+### Changed
+- Binary name: `claude-mem` → `tencentdb-mem`
+- All hook commands, wrappers, scheduler, MCP registration updated
+- All docs, examples use new binary name
+
+### Migration (existing users — mandatory)
+```bash
+# 1. Remove old install
+npm uninstall -g @vkirill/tencentdb-memory-claude-code
+
+# 2. Install v0.5.0
+npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.5.0
+
+# 3. Re-run install.sh — auto-migrates hook commands + MCP registration from old name
+bash $(npm root -g)/@vkirill/tencentdb-memory-claude-code/claude-code-integration/install.sh
+
+# 4. Restart Claude Code
+
+# 5. Verify
+tencentdb-mem --version    # → 0.5.0
+which claude-mem            # → (not found — expected)
+```
+
+### Unchanged
+- npm package name `@vkirill/tencentdb-memory-claude-code`
+- GitHub repo `TencentDB-Memory-Claude-Code`
+- MCP server name `tencentdb-memory`
+- All tool names `mcp__tencentdb-memory__*`
+- All config files, env vars, data formats
+- All test fixtures
+
+---
+
 ## [0.4.3] — 2026-05-17
 
 Critical bug fix: MCP registration now writes to the correct file (`~/.claude.json`).

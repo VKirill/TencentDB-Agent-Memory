@@ -1,5 +1,5 @@
 /**
- * `claude-mem` CLI entry point.
+ * `tencentdb-mem` CLI entry point.
  *
  * Top-level Commander program. Each subcommand lives in src/cli/commands/.
  * v0.1 wires: init. capture/recall/stats land in Tasks 16/18/20.
@@ -23,9 +23,9 @@ export function buildCli(): Command {
   const program = new Command();
 
   program
-    .name("claude-mem")
+    .name("tencentdb-mem")
     .description("Four-layer local memory for Claude Code and other agents.")
-    .version("0.4.3")
+    .version("0.5.0")
     .option("--auto-init", "auto-bootstrap .claude/memory/ on first use (for hook invocation)", false)
     .option(
       "--platform <name>",
@@ -47,7 +47,7 @@ export function buildCli(): Command {
         // stdout is fine here: init is interactive, not hook-invoked
         if (result.message) process.stdout.write(result.message + "\n");
       } else {
-        process.stderr.write(`claude-mem init: ${result.error ?? "unknown error"}\n`);
+        process.stderr.write(`tencentdb-mem init: ${result.error ?? "unknown error"}\n`);
       }
       // Always exit 0 — hook discipline
       process.exit(0);
@@ -64,7 +64,7 @@ export function buildCli(): Command {
         platform: opts.platform,
       });
       if (!result.ok) {
-        process.stderr.write(`claude-mem capture: ${result.error ?? "unknown error"}\n`);
+        process.stderr.write(`tencentdb-mem capture: ${result.error ?? "unknown error"}\n`);
       }
       // Hook discipline: exit 0 even on capture failure
       process.exit(0);
@@ -96,7 +96,7 @@ export function buildCli(): Command {
       });
       if (result.ok && result.text) process.stdout.write(result.text + "\n");
       if (!result.ok) {
-        process.stderr.write(`claude-mem recall: ${result.error ?? "unknown error"}\n`);
+        process.stderr.write(`tencentdb-mem recall: ${result.error ?? "unknown error"}\n`);
       }
       process.exit(0);
     });
@@ -114,7 +114,7 @@ export function buildCli(): Command {
       if (result.ok) {
         process.stdout.write(formatStatsReport(result) + "\n");
       } else {
-        process.stderr.write(`claude-mem stats: ${result.error ?? "unknown error"}\n`);
+        process.stderr.write(`tencentdb-mem stats: ${result.error ?? "unknown error"}\n`);
       }
       process.exit(0);
     });
@@ -136,7 +136,7 @@ export function buildCli(): Command {
       if (result.ok && result.summary) {
         process.stdout.write(formatExtractSummary(projectRoot, result.summary) + "\n");
       } else if (!result.ok) {
-        process.stderr.write(`claude-mem extract: ${result.error ?? "unknown error"}\n`);
+        process.stderr.write(`tencentdb-mem extract: ${result.error ?? "unknown error"}\n`);
       }
       // Extract is a deliberate command (not a hook) — propagate the real
       // exit code so users / CI can detect failure. This differs from

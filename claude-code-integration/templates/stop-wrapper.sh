@@ -25,7 +25,7 @@ if [ -f "$HOME/.claude/claude-mem.env" ]; then
   set +a
 fi
 
-read -ra CLAUDE_MEM_CMD <<< "${CLAUDE_MEM_BIN:-claude-mem}"
+read -ra CLAUDE_MEM_CMD <<< "${CLAUDE_MEM_BIN:-tencentdb-mem}"
 
 INPUT="$(cat 2>/dev/null || true)"
 
