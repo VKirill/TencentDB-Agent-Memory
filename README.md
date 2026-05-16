@@ -5,6 +5,8 @@
 > reshaped for Claude Code with English prompts, a coder-focused L3 persona,
 > SessionStart auto-injection, and an MCP server.
 
+🌐 **Languages**: **English** · [Русский](./README.ru.md)
+
 [![npm](https://img.shields.io/badge/npm-v0.4.0-blue)](https://github.com/VKirill/TencentDB-Memory-Claude-Code/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.16-brightgreen)](https://nodejs.org)
