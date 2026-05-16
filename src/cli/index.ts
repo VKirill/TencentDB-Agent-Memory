@@ -75,7 +75,9 @@ export function buildCli(): Command {
     .requiredOption("-q, --query <text>", "search query (use '-' to read from stdin)")
     .option("-l, --limit <n>", "max number of matches", (v) => Number.parseInt(v, 10), 5)
     .option("--no-vector", "force v0.2 keyword path; skip Voyage embed even if key present")
-    .action(async (subOpts: { query: string; limit: number; vector?: boolean }, cmd: Command) => {
+    .option("--no-persona", "skip persona.md injection (v0.3.5)")
+    .option("--no-scenes", "skip scene index injection (v0.3.5)")
+    .action(async (subOpts: { query: string; limit: number; vector?: boolean; persona?: boolean; scenes?: boolean }, cmd: Command) => {
       const globals = cmd.optsWithGlobals<{ autoInit?: boolean; platform?: string }>();
       let query = subOpts.query;
       if (query === "-") {
@@ -88,6 +90,8 @@ export function buildCli(): Command {
         autoInit: globals.autoInit,
         platform: globals.platform,
         vector: subOpts.vector,
+        includePersona: subOpts.persona,
+        includeScenes: subOpts.scenes,
       });
       if (result.ok && result.text) process.stdout.write(result.text + "\n");
       if (!result.ok) {
