@@ -50,7 +50,7 @@ OPENROUTER_API_KEY=sk-or-... npm run smoke:hy3
 | Synthesized fixtures (PII-safe) — confirmed in v0.2 SPEC Q2 | ✅ inherits decision |
 | No new npm deps needed | ✅ stdlib only for scheduler; smoke imports from `dist/` |
 
-## 5. TDD checklist — 16 commits
+## 5. TDD checklist — 15 commits
 
 ### Phase A — Scheduler (8 commits)
 
@@ -65,7 +65,7 @@ OPENROUTER_API_KEY=sk-or-... npm run smoke:hy3
 | **A7** | ➕ `claude-code-integration/templates/claude-mem-projects.txt.example` (~15 lines: header + 2 commented examples) | Template present |
 | **A8** | ✏️ `package.json files[]` — explicit `"claude-code-integration/scheduler.cjs"` | `npm pack --dry-run` includes scheduler.cjs |
 
-### Phase B — Hy3 smoke (6 commits)
+### Phase B — Hy3 smoke (7 commits)
 
 | # | Action | Acceptance |
 |---|---|---|
@@ -77,7 +77,7 @@ OPENROUTER_API_KEY=sk-or-... npm run smoke:hy3
 | **B5** | 🧪 Run `OPENROUTER_API_KEY=… npm run smoke:hy3` against real Hy3. Record rate in CHANGELOG. If <80% → switch `templates/config.default.json` extraction.model to `anthropic/claude-sonnet-4.6` + re-run smoke | Rate ≥80% OR R1 fallback activated |
 | **B6** | ✏️ `CHANGELOG.md` `[0.3.1]` entry + bump `package.json` 0.3.0→0.3.1 + `src/cli/index.ts` version. Final gates: `npm test && npm run build && bash scripts/check-no-openclaw.sh` all green | Ship gate |
 
-**Total: 14 commits, ~565 LOC new + ~122 LOC modified across 5 new + 7 modified files.**
+**Total: 15 commits (8 Phase A + 7 Phase B incl B2a re-export), ~565 LOC new + ~125 LOC modified across 5 new + 8 modified files.**
 
 ## 6. Acceptance criteria (final ship gate)
 
@@ -124,3 +124,11 @@ All 8 planner OQs taken as **default** (no user input needed):
 | C4 (P2) | A4 mentioned "cron fallback instructions" but D1 explicitly rejects cron → self-contradiction | Dropped cron mention; install.sh prints PM2-only |
 
 Round 2 codex runs after this commit. Per orchestrator policy: max 2 SPEC review rounds.
+
+### Round 2 (2026-05-16) — 1 P2, fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| C5 (P2) | B2a added as standalone task → Phase B count was 6 (now 7), total was 14 (now 15). Risk: executor marks plan done with B2a skipped | Updated all counts: §5 header "15 commits", Phase B subhead "7 commits", final total line |
+
+Per orchestrator policy: max 2 rounds. SPEC final. Worktree + Phase A start next.
