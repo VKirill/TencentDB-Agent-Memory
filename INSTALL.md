@@ -96,7 +96,7 @@ test -f ~/.claude/claude-mem.env && stat -c%a ~/.claude/claude-mem.env
 ## Step 3 — Wire Claude Code hooks + MCP server
 
 The installer copies hook wrappers into `~/.claude/hooks/claude-mem/` and
-registers the MCP server in `~/.claude/settings.json`. Idempotent — safe to
+registers the MCP server in `~/.claude.json`. Idempotent — safe to
 re-run after upgrades.
 
 ```bash
@@ -117,11 +117,11 @@ You should see output like:
 [install] done.
 ```
 
-Verify the MCP server entry in your settings:
+Verify the MCP server entry in the correct file:
 
 ```bash
-python3 -c "import json; print(json.load(open('$HOME/.claude/settings.json'))['mcpServers'].get('claude-mem','NOT REGISTERED'))"
-# → {'command': '/home/you/.npm-global/bin/claude-mem', 'args': ['mcp', 'serve']}
+python3 -c "import json; print(json.load(open('$HOME/.claude.json'))['mcpServers'].get('tencentdb-memory','NOT REGISTERED'))"
+# → {'type': 'stdio', 'command': '/home/you/.npm-global/bin/claude-mem', 'args': ['mcp', 'serve']}
 ```
 
 ---
@@ -306,8 +306,8 @@ captured — check that the Stop hook is wired (`grep -A3 "Stop" ~/.claude/setti
 
 ```bash
 # 1. Verify registration
-python3 -c "import json; print(json.load(open('$HOME/.claude/settings.json')).get('mcpServers', {}))"
-# Should show "claude-mem" entry with command path
+python3 -c "import json; print(json.load(open('$HOME/.claude.json')).get('mcpServers', {}))"
+# Should show "tencentdb-memory" entry with command path
 
 # 2. Test the server boots manually
 printf '%s\n%s\n' \
@@ -361,7 +361,8 @@ Solutions:
 | `~/.claude/hooks/claude-mem/scheduler.cjs` | PM2 daemon | install.sh |
 | `~/.claude/claude-mem.env` | API keys (mode 600) | you |
 | `~/.claude/claude-mem-projects.txt` | PM2 extract allowlist | you |
-| `~/.claude/settings.json` | Hook + MCP registration | install.sh patches |
+| `~/.claude.json` | MCP server registration | install.sh patches |
+| `~/.claude/settings.json` | Hook registration (Claude Code hooks only) | install.sh patches |
 | `<project>/.claude/memory/` | Per-project memory state (L0/L1/L2/L3) | claude-mem CLI |
 | `~/.pm2/` | PM2 process state | pm2 |
 

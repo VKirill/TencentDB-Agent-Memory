@@ -208,7 +208,7 @@ Tencent оригинально проектировал L3 как «персон
 ## MCP-инструменты (v0.4.2)
 
 После запуска install-скрипта MCP-сервер регистрируется в
-`~/.claude/settings.json`, и Claude Code может вызывать эти tool'ы во время
+`~/.claude.json`, и Claude Code может вызывать эти tool'ы во время
 разговора:
 
 | Tool | Что делает |
@@ -348,7 +348,7 @@ Source-ни env-файл в shell или проверь что `~/.claude/claude
 
 **MCP tool'ы не видны в Claude Code**
 
-Проверь что `~/.claude/settings.json` содержит `mcpServers.claude-mem` с
+Проверь что `~/.claude.json` содержит `mcpServers.tencentdb-memory` с
 правильным command path. Перезапусти `install.sh` чтобы исправить, затем
 перезапусти Claude Code.
 

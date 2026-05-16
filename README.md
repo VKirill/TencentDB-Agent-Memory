@@ -149,7 +149,7 @@ project — by design, to keep contexts cleanly separated.
 
 ## MCP tools (v0.4.2)
 
-Once the install script registers the MCP server in `~/.claude/settings.json`,
+Once the install script registers the MCP server in `~/.claude.json`,
 Claude Code can call these tools mid-conversation:
 
 | Tool | What it does |
@@ -288,7 +288,7 @@ Force regeneration by deleting `persona.md` and re-running extract.
 
 **MCP tools not visible in Claude Code**
 
-Check `~/.claude/settings.json` contains `mcpServers.claude-mem` with the
+Check `~/.claude.json` contains `mcpServers.tencentdb-memory` with the
 right command path. Re-run `install.sh` to repair, then restart Claude Code.
 
 **PM2 scheduler doesn't run extract on any project**

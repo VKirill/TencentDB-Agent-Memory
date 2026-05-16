@@ -122,41 +122,71 @@ fi
 
 echo "claude-mem install: wrappers installed to $HOOKS_DIR (with bin baked)"
 
-# ── v0.4.0/v0.4.2: MCP server registration helper ───────────────────
-# Called after settings.json exists (both fresh-create and merge paths).
-# v0.4.2: registers under "tencentdb-memory"; removes legacy "claude-mem"
-# key if present (upgrade migration from v0.4.0/v0.4.1).
+# ── v0.4.3: MCP server registration in ~/.claude.json (correct file) ─
+# v0.4.0-v0.4.2 BUG: wrote to ~/.claude/settings.json (hooks-only file).
+# The canonical MCP registry Claude Code reads is ~/.claude.json (HOME root).
+# This block: (a) writes to ~/.claude.json atomically, (b) removes stale
+# entries from ~/.claude/settings.json (botched v0.4.0-v0.4.2 installs).
 BIN_PATH="$CLAUDE_MEM_BIN"
+CLAUDE_JSON="$HOME/.claude.json"
+LEGACY_SETTINGS="$HOME/.claude/settings.json"
 
 register_mcp_entry() {
-  local target_settings="$1"
-  if ! grep -q '"tencentdb-memory"' "$target_settings"; then
-    node -e '
-      const fs = require("node:fs");
-      const p = "'"$target_settings"'";
-      let s;
-      try {
-        s = JSON.parse(fs.readFileSync(p, "utf-8"));
-      } catch (e) {
-        process.stderr.write("claude-mem install: settings.json parse error, skipping MCP registration: " + e.message + "\n");
-        process.exit(0);
-      }
-      s.mcpServers = s.mcpServers || {};
-      // v0.4.2: remove legacy "claude-mem" key if present (namespace cleanup)
-      if (s.mcpServers["claude-mem"]) {
-        delete s.mcpServers["claude-mem"];
-        console.log("claude-mem install: removed legacy claude-mem MCP key from", p);
-      }
-      s.mcpServers["tencentdb-memory"] = {
-        command: "'"$BIN_PATH"'",
-        args: ["mcp", "serve"]
-      };
-      fs.writeFileSync(p, JSON.stringify(s, null, 2));
-      console.log("claude-mem install: registered tencentdb-memory MCP server in", p);
-    '
-  else
-    echo "claude-mem install: tencentdb-memory MCP server already registered, skipping"
-  fi
+  node -e '
+const fs = require("node:fs");
+const binPath = "'"$BIN_PATH"'";
+const targetFile = "'"$CLAUDE_JSON"'";
+const legacyFiles = [
+  "'"$LEGACY_SETTINGS"'",
+];
+
+// 1. Atomic write helper
+function atomicWrite(p, obj) {
+  const tmp = p + ".tmp." + process.pid;
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+  fs.renameSync(tmp, p);
+}
+
+// 2. Read or initialize ~/.claude.json (preserve all other keys + mcpServers)
+let main = {};
+if (fs.existsSync(targetFile)) {
+  try { main = JSON.parse(fs.readFileSync(targetFile, "utf-8")); }
+  catch (e) {
+    console.error("claude-mem install: ~/.claude.json is corrupt — aborting MCP registration");
+    process.exit(1);
+  }
+}
+main.mcpServers = main.mcpServers || {};
+
+// 3. Idempotency check
+const existing = main.mcpServers["tencentdb-memory"];
+const wanted = { type: "stdio", command: binPath, args: ["mcp", "serve"] };
+if (existing && existing.command === wanted.command &&
+    JSON.stringify(existing.args || []) === JSON.stringify(wanted.args)) {
+  console.log("claude-mem install: tencentdb-memory MCP already registered in ~/.claude.json, skipping");
+} else {
+  main.mcpServers["tencentdb-memory"] = wanted;
+  atomicWrite(targetFile, main);
+  console.log("claude-mem install: registered tencentdb-memory MCP server in ~/.claude.json");
+}
+
+// 4. Cleanup legacy entries in WRONG files (v0.4.0-v0.4.2 botched installs)
+for (const lf of legacyFiles) {
+  if (!fs.existsSync(lf)) continue;
+  let s;
+  try { s = JSON.parse(fs.readFileSync(lf, "utf-8")); } catch { continue; }
+  if (!s.mcpServers) continue;
+  let changed = false;
+  for (const k of ["tencentdb-memory", "claude-mem"]) {
+    if (s.mcpServers[k]) {
+      delete s.mcpServers[k];
+      console.log("claude-mem install: removed stale " + k + " MCP entry from " + lf);
+      changed = true;
+    }
+  }
+  if (changed) atomicWrite(lf, s);
+}
+'
 }
 
 # ── v0.3.0: env file for OPENROUTER_API_KEY / VOYAGE_API_KEY ────────
@@ -241,7 +271,7 @@ fi
 if [[ ! -f "$SETTINGS_FILE" ]]; then
   cp "$RESOLVED_TPL" "$SETTINGS_FILE"
   echo "claude-mem install: created $SETTINGS_FILE"
-  register_mcp_entry "$SETTINGS_FILE"
+  register_mcp_entry
   echo "claude-mem install: ✅ done. Start a new Claude Code session to activate hooks."
   exit 0
 fi
@@ -318,6 +348,6 @@ fi
 jq . "$MERGED" > "$SETTINGS_FILE"
 
 echo "claude-mem install: merged into $SETTINGS_FILE"
-register_mcp_entry "$SETTINGS_FILE"
+register_mcp_entry
 echo "claude-mem install: ✅ done. Start a new Claude Code session to activate hooks."
 exit 0
