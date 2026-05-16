@@ -56,8 +56,14 @@ process.stdin.on("end", () => {
     const lines = buf.split("\n");
     // Walk newest-first so we capture session tail (most relevant for
     // summary) within our 4 KiB budget. Then reverse so chronological.
+    //
+    // v0.2.2 cosmetic: use «U» / «A» marker prefixes instead of
+    // "user:"/"assistant:" so the inner labels do not visually collide
+    // with recall.ts outer "user: ... \nassistant: ..." wrapping
+    // (which would otherwise produce "assistant: assistant: …").
     const turns = [];
     let budget = 4096;
+    const marker = (r) => (r === "user" ? "«U» " : "«A» ");
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i];
       if (!line) continue;
@@ -69,9 +75,10 @@ process.stdin.on("end", () => {
       if (role !== "user" && role !== "assistant") continue;
       const text = extractText(msg.content);
       if (!text) continue;
-      const formatted = role + ": " + text;
+      const prefix = marker(role);
+      const formatted = prefix + text;
       if (formatted.length >= budget) {
-        turns.unshift(role + ": …" + text.slice(-(budget - role.length - 4)));
+        turns.unshift(prefix + "…" + text.slice(-(budget - prefix.length - 1)));
         break;
       }
       budget -= formatted.length + 1; // +1 for newline separator
