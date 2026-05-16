@@ -74,7 +74,8 @@ export function buildCli(): Command {
     .description("Keyword search over recorded turns; prints matches to stdout.")
     .requiredOption("-q, --query <text>", "search query (use '-' to read from stdin)")
     .option("-l, --limit <n>", "max number of matches", (v) => Number.parseInt(v, 10), 5)
-    .action(async (subOpts: { query: string; limit: number }, cmd: Command) => {
+    .option("--no-vector", "force v0.2 keyword path; skip Voyage embed even if key present")
+    .action(async (subOpts: { query: string; limit: number; vector?: boolean }, cmd: Command) => {
       const globals = cmd.optsWithGlobals<{ autoInit?: boolean; platform?: string }>();
       let query = subOpts.query;
       if (query === "-") {
@@ -86,6 +87,7 @@ export function buildCli(): Command {
         limit: subOpts.limit,
         autoInit: globals.autoInit,
         platform: globals.platform,
+        vector: subOpts.vector,
       });
       if (result.ok && result.text) process.stdout.write(result.text + "\n");
       if (!result.ok) {

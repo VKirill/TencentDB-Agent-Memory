@@ -18,6 +18,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { loadContextOrAutoInit } from "../context.js";
+import { initStores, type PipelineLogger } from "../../utils/pipeline-factory.js";
+import { runVectorRecall } from "./recall-vector.js";
 
 const MAX_OUTPUT_CHARS = 4000;
 const RECORD_SEPARATOR = "\n---\n";
@@ -33,6 +35,12 @@ export interface RunRecallOptions {
   autoInit?: boolean;
   /** Platform tag — written into config on auto-init (e.g. "claude-code"). */
   platform?: string;
+  /**
+   * v0.3.2: semantic vector recall via Voyage + L1 records. Default true.
+   * Set to false (CLI `--no-vector` flag) to force the v0.2 keyword path
+   * (useful for debugging, no-key environments, or speed-critical UPS hooks).
+   */
+  vector?: boolean;
 }
 
 export interface RunRecallResult {
@@ -72,12 +80,23 @@ export async function runRecall(opts: RunRecallOptions): Promise<RunRecallResult
   }
 
   const convDir = path.join(ctx.dataDir, CONVERSATIONS_SUBDIR);
-  if (!fs.existsSync(convDir)) {
+  const rawQuery = (opts.query ?? "").trim();
+  if (!rawQuery) {
     return { ok: true, text: "", matchCount: 0 };
   }
+  const query = rawQuery.toLowerCase();
 
-  const query = (opts.query ?? "").trim().toLowerCase();
-  if (!query) {
+  // ── v0.3.2: try vector path first ──────────────────────────────────
+  // Returns null on any fallback condition (no key, empty L1, degraded
+  // store, embed failure, vector miss). Linear control flow per ADR-2.
+  const vectorLines = await tryVectorPath(ctx, rawQuery, opts);
+  if (vectorLines && vectorLines.length > 0) {
+    const text = composeBounded(vectorLines, MAX_OUTPUT_CHARS);
+    return { ok: true, text, matchCount: vectorLines.length };
+  }
+
+  // ── Keyword fallback (v0.2 behavior preserved) ────────────────────
+  if (!fs.existsSync(convDir)) {
     return { ok: true, text: "", matchCount: 0 };
   }
 
@@ -154,6 +173,55 @@ function safeParseLine(line: string): L0Message | undefined {
 function formatTurn(user: L0Message, assistant: L0Message): string {
   const ts = user.recordedAt ?? "?";
   return `[${ts}]\nuser: ${user.content ?? ""}\nassistant: ${assistant.content ?? ""}`;
+}
+
+/**
+ * v0.3.2: build a VectorRecallContext from the loaded CliContext and
+ * call runVectorRecall. Returns null when vector path is unavailable
+ * or has no results — caller falls back to keyword grep.
+ *
+ * Heavy lift (initStores) only happens when vector path is enabled
+ * AND keys are present — avoids cold-start cost for users without Voyage.
+ */
+async function tryVectorPath(
+  ctx: Awaited<ReturnType<typeof loadContextOrAutoInit>>,
+  query: string,
+  opts: RunRecallOptions,
+): Promise<string[] | null> {
+  // Cheap pre-checks first — avoid initStores cost when we'll bail anyway.
+  if (opts.vector === false) return null;
+  const apiKey = ctx.config.embedding?.apiKey?.trim() ?? "";
+  if (!apiKey) return null;
+
+  const logger: PipelineLogger = {
+    debug: (m) => ctx.logger.debug?.(m),
+    info: (m) => ctx.logger.info(m),
+    warn: (m) => ctx.logger.warn(m),
+    error: (m) => ctx.logger.error(m),
+  };
+
+  let stores;
+  try {
+    stores = await initStores(ctx.config, ctx.dataDir, logger);
+  } catch (err) {
+    ctx.logger.warn(`recall: initStores failed, falling back to keyword: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  if (!stores.vectorStore || !stores.embeddingService) return null;
+
+  const scoreThreshold = ctx.config.recall?.scoreThreshold ?? 0.3;
+
+  return runVectorRecall(
+    {
+      apiKey,
+      embeddingService: stores.embeddingService,
+      vectorStore: stores.vectorStore,
+      logger,
+      scoreThreshold,
+    },
+    query,
+    { limit: opts.limit, vector: opts.vector },
+  );
 }
 
 function composeBounded(matches: string[], maxChars: number): string {

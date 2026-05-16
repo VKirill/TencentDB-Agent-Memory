@@ -22,12 +22,30 @@
 import type { Logger } from "../../core/types.js";
 import { formatL1SearchResult } from "./recall-format.js";
 
+/** Minimal L1 search hit shape — matches L1SearchResult subset we use. */
+interface L1Hit {
+  record_id: string;
+  content: string;
+  type: string;
+  priority: number;
+  scene_name: string;
+  score: number;
+  timestamp_str: string;
+  timestamp_start: string;
+  timestamp_end: string;
+  session_key: string;
+  session_id: string;
+  metadata_json: string;
+}
+
 /** Test seam — extract.ts injects real instances; tests pass minimal mocks. */
 export interface VectorRecallContext {
   apiKey: string;
   embeddingService: {
     embed: (text: string) => Promise<Float32Array>;
   };
+  // Loosely typed to accept IMemoryStore (sync or Promise return per
+  // MaybePromise type) AND simple test mocks (Promise-returning).
   vectorStore: {
     isDegraded: () => boolean;
     countL1: () => number | Promise<number>;
@@ -35,20 +53,9 @@ export interface VectorRecallContext {
       queryEmbedding: Float32Array,
       topK?: number,
       queryText?: string,
-    ) => Promise<Array<{
-      record_id: string;
-      content: string;
-      type: string;
-      priority: number;
-      scene_name: string;
-      score: number;
-      timestamp_str: string;
-      timestamp_start: string;
-      timestamp_end: string;
-      session_key: string;
-      session_id: string;
-      metadata_json: string;
-    }>>;
+    ) =>
+      | Promise<Array<L1Hit>>
+      | Array<L1Hit>;
   };
   logger: Pick<Logger, "debug" | "info" | "warn" | "error">;
   /** Cosine similarity floor (per ADR-4, default 0.3 from cfg.recall.scoreThreshold). */
@@ -104,7 +111,9 @@ export async function runVectorRecall(
   // ── Branch 5: vector miss (codex C1 / ADR-5) → fallback ────────────
   // topK = max(opts.limit, 5) per ADR-4; truncate to opts.limit after threshold filter.
   const topK = Math.max(opts.limit, 5);
-  const raw = await ctx.vectorStore.searchL1Vector(queryEmbedding, topK, query);
+  // searchL1Vector may return sync (IMemoryStore MaybePromise) or async.
+  // `await` handles both safely.
+  const raw = await Promise.resolve(ctx.vectorStore.searchL1Vector(queryEmbedding, topK, query));
   const filtered = raw.filter((r) => r.score >= ctx.scoreThreshold);
   if (filtered.length === 0) {
     ctx.logger.info(

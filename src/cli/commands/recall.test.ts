@@ -103,4 +103,25 @@ describe("runRecall", () => {
     expect(result.matchCount).toBe(0);
     expect(result.text).toBe("");
   });
+
+  it("v0.3.2 regression: vector:false forces keyword path (v0.2 behavior preserved)", async () => {
+    const projectRoot = makeInitializedProject();
+    await runInit({ projectRoot });
+    await captureN(projectRoot, [
+      { user: "vector-bypass test", assistant: "keyword should match this" },
+    ]);
+
+    // Even if VOYAGE_API_KEY exists in env, vector:false short-circuits
+    // BEFORE initStores → no embed call, no Voyage cost, pure keyword grep.
+    const result = await runRecall({
+      projectRoot,
+      query: "vector-bypass",
+      limit: 5,
+      vector: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.text).toContain("vector-bypass test");
+    expect(result.matchCount).toBeGreaterThanOrEqual(1);
+  });
 });
