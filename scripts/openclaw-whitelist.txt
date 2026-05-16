@@ -44,3 +44,12 @@ src/utils/pipeline-factory.ts
 # that re-emits `openclawConfig`. Dropped from v0.1 CLI per SPEC §2;
 # file deleted entirely in Task 14 (CLI rewrite). Whitelisted until then.
 src/cli/commands/seed.ts
+
+# src/cli/index.ts: upstream OpenClaw CLI integration shim.
+# Rewritten entirely in Task 14 to a host-neutral Commander program.
+src/cli/index.ts
+
+# src/utils/clean-context-runner.ts: stub created in v0.1 Task 6.
+# Comments intentionally describe the upstream OpenClaw runner to
+# explain why this stub exists (see file header).
+src/utils/clean-context-runner.ts

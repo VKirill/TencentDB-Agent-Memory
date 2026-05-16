@@ -48,7 +48,7 @@ export function isNonInteractiveTrigger(trigger?: string, sessionKey?: string): 
 const BUILTIN_MATCHERS: SessionKeyMatcher[] = [
   // Scene extraction runner sessions
   (key) => key.includes(":memory-scene-extract-"),
-  // OpenClaw subagent sessions
+  // Subagent sessions (excluded from pipeline)
   (key) => key.includes(":subagent:"),
   // Temporary / internal utility sessions (e.g. temp:slug-generator)
   (key) => key.startsWith("temp:"),

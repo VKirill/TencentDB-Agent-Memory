@@ -38,7 +38,7 @@ export interface ExtractionConfig {
   enableDedup: boolean;
   /** Max memories per session (default: 20) */
   maxMemoriesPerSession: number;
-  /** LLM model for extraction, format: "provider/model" (falls back to OpenClaw default model when omitted) */
+  /** LLM model for extraction, format: "provider/model" (falls back to host default when omitted) */
   model?: string;
 }
 
@@ -52,7 +52,7 @@ export interface PersonaConfig {
   backupCount: number;
   /** Scene blocks backup count (default: 10) */
   sceneBackupCount: number;
-  /** LLM model for persona generation, format: "provider/model" (falls back to OpenClaw default model when omitted) */
+  /** LLM model for persona generation, format: "provider/model" (falls back to host default when omitted) */
   model?: string;
 }
 
@@ -172,12 +172,14 @@ export interface ReportConfig {
 
 /**
  * Standalone LLM configuration — when set, TDAI uses direct API calls
- * instead of the host's built-in LLM runner (e.g. OpenClaw's runEmbeddedPiAgent).
+ * via an OpenAI-compatible HTTP endpoint instead of any host-provided
+ * LLM runner.
  *
  * This allows using a different (often cheaper/faster) model for memory
  * extraction while the main agent uses a premium model.
  *
- * Leave undefined (default) to use the host's native LLM mechanism.
+ * Leave undefined (default) to use the host's native LLM mechanism
+ * (none in v0.1 — standalone CLI is the only host).
  */
 export interface StandaloneLLMOverrideConfig {
   /** Enable standalone LLM mode (default: false). When false, uses host LLM. */
@@ -211,7 +213,7 @@ export interface OffloadConfig {
   temperature: number;
   /** Force-trigger L1 when pending tool pairs >= this threshold (default: 4) */
   forceTriggerThreshold: number;
-  /** Custom data directory (absolute path). Default: ~/.openclaw/context-offload */
+  /** Custom data directory (absolute path). Default: host-provided context-offload root. */
   dataDir?: string;
   /** Default context window size (default: 200000) */
   defaultContextWindow: number;
@@ -272,9 +274,9 @@ export interface MemoryTdaiConfig {
   memoryCleanup: MemoryCleanupConfig;
   report: ReportConfig;
   /**
-   * Standalone LLM override — when enabled, TDAI bypasses the host's LLM
-   * (e.g. OpenClaw's runEmbeddedPiAgent) and uses direct OpenAI-compatible
-   * API calls for L1/L2/L3 extraction.
+   * Standalone LLM override — when enabled, TDAI bypasses any host-
+   * provided LLM runner and uses direct OpenAI-compatible API calls
+   * for L1/L2/L3 extraction.
    *
    * Default: disabled (uses host LLM).
    */

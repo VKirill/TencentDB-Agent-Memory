@@ -1,8 +1,9 @@
 /**
- * StandaloneHostAdapter — HostAdapter for the TDAI Gateway (Hermes sidecar).
+ * StandaloneHostAdapter — host-neutral HostAdapter.
  *
- * Does NOT depend on OpenClaw. Context is constructed from Gateway config
- * and per-request parameters (session_id, user_id, etc.).
+ * Context is constructed from CLI/library config and per-request
+ * parameters (session_id, user_id, etc.). Used by the CLI and any
+ * library consumer that wraps TdaiCore directly.
  */
 
 import { StandaloneLLMRunnerFactory } from "./llm-runner.js";

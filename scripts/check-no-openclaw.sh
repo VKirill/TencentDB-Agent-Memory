@@ -48,7 +48,15 @@ grep -rniE "openclaw|hermes" "${TARGETS[@]}" \
   --exclude-dir=node_modules \
   --exclude-dir=dist \
   --exclude-dir=.git \
-  > "$HITS_FILE" 2>/dev/null || true
+  --exclude="check-no-openclaw.sh" \
+  --exclude="openclaw-whitelist.txt" \
+  > "$HITS_FILE.raw" 2>/dev/null || true
+
+# Strip self-references to gate-script filenames (legitimate self-mentions
+# in package.json scripts, README, etc. — not actual openclaw code refs).
+grep -v "scripts/check-no-openclaw\.sh\|scripts/openclaw-whitelist\.txt" \
+  "$HITS_FILE.raw" > "$HITS_FILE" 2>/dev/null || true
+rm -f "$HITS_FILE.raw"
 
 OFFENDERS=0
 while IFS= read -r hit; do
