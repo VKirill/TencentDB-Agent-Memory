@@ -193,6 +193,23 @@ async function tryVectorPath(
   const apiKey = ctx.config.embedding?.apiKey?.trim() ?? "";
   if (!apiKey) return null;
 
+  // ── Cheap pre-check: skip initStores cost when L1 is definitely empty.
+  // initStores loads SQLite + builds embedding service (~1.7s on cold call).
+  // If vectors.db doesn't exist OR is <50KB (schema-only, no rows), L1
+  // has nothing to vector-search. Fall back immediately at keyword speed.
+  // Measured impact: vector path on empty L1 drops from ~2s to ~50ms.
+  const dbPath = path.join(ctx.dataDir, "vectors.db");
+  try {
+    const stat = fs.statSync(dbPath);
+    if (stat.size < 50_000) {
+      ctx.logger.debug?.(`recall: vectors.db too small (${stat.size}B), L1 unlikely populated; falling back to keyword`);
+      return null;
+    }
+  } catch {
+    // ENOENT etc. — no DB yet, no L1 to search
+    return null;
+  }
+
   const logger: PipelineLogger = {
     debug: (m) => ctx.logger.debug?.(m),
     info: (m) => ctx.logger.info(m),
