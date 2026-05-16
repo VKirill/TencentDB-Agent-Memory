@@ -9,6 +9,7 @@
 
 export * from "./src/adapters/standalone/index.js";
 export { TdaiCore } from "./src/core/tdai-core.js";
+export { main, buildCli } from "./src/cli/index.js";
 export type {
   HostAdapter,
   LLMRunner,
