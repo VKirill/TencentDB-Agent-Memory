@@ -21,8 +21,6 @@ export default defineConfig({
   sourcemap: false,
   deps: {
     neverBundle: (id) => {
-      // openclaw SDK — always external
-      if (id === "openclaw" || id.startsWith("openclaw/")) return true;
       // node: builtins
       if (id.startsWith("node:")) return true;
       // all declared dependencies
