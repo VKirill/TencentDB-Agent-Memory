@@ -1,5 +1,5 @@
 {
-  "_comment": "Default config for @vkirill/tencentdb-agent-memory. API keys come from env (OPENROUTER_API_KEY, VOYAGE_API_KEY) — never stored here. See claude-mem README for env wiring.",
+  "_comment": "Default config for @vkirill/tencentdb-agent-memory. API keys come from env (OPENROUTER_API_KEY, OPENAI_API_KEY) — never stored here. VOYAGE_API_KEY is supported as a fallback when OPENAI_API_KEY is absent. See claude-mem README for env wiring.",
   "storeBackend": "sqlite",
   "capture": {
     "l0l1RetentionDays": 0,
@@ -30,10 +30,10 @@
     "topK": 5
   },
   "embedding": {
-    "provider": "voyage",
-    "baseUrl": "https://api.voyageai.com/v1",
+    "provider": "openai",
+    "baseUrl": "https://api.openai.com/v1",
     "apiKey": "",
-    "model": "voyage-3-lite",
+    "model": "text-embedding-3-small",
     "dimensions": 512,
     "timeoutMs": 10000,
     "captureTimeoutMs": 5000,

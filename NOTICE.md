@@ -19,7 +19,7 @@ verbatim from upstream. This is the value-bearing asset of the fork.
 - Re-targeted at a standalone CLI (`init`, `capture`, `recall`, `stats`)
   for use with Claude Code and other agents
 - Defaults to OpenRouter (`tencent/hy3-preview`) as the LLM provider
-  and Voyage AI (`voyage-3-lite`, 512-d) as the embedding provider —
+  and OpenAI (`text-embedding-3-small`, 512-d) as the embedding provider —
   both via OpenAI-compatible HTTP
 
 See `CHANGELOG.md` for the per-version breakdown.

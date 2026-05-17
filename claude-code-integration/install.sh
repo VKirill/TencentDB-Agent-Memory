@@ -242,7 +242,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
     cp "$ENV_TEMPLATE" "$ENV_FILE"
     chmod 0600 "$ENV_FILE"
     echo "claude-mem install: created env file at $ENV_FILE (mode 0600)"
-    echo "claude-mem install: → edit it and add OPENROUTER_API_KEY=... VOYAGE_API_KEY=..."
+    echo "claude-mem install: → edit it and add OPENROUTER_API_KEY=... OPENAI_API_KEY=..."
     echo "claude-mem install: → then 'claude-mem extract' (v0.3.0+) can call the LLM pipeline"
   else
     echo "claude-mem install: env template missing ($ENV_TEMPLATE) — skipping env file creation" >&2

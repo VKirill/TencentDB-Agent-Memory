@@ -5,7 +5,7 @@
 # TencentDB Memory for Claude Code
 
 **Persistent per-project memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via an MCP server (4 tools) + 4-layer L0 / L1 / L2 / L3 extraction pipeline.**
-**English-localized coder-focused fork** of [Tencent/TencentDB-Agent-Memory](https://github.com/Tencent/TencentDB-Agent-Memory) — vector recall (Voyage embeddings), SessionStart auto-injection, PM2 scheduler, orchestrator sync.
+**English-localized coder-focused fork** of [Tencent/TencentDB-Agent-Memory](https://github.com/Tencent/TencentDB-Agent-Memory) — vector recall (OpenAI embeddings), SessionStart auto-injection, PM2 scheduler, orchestrator sync.
 
 by **[@VKirill](https://github.com/VKirill)** · 📢 [Telegram channel: @pomogay_marketing](https://t.me/pomogay_marketing)
 
@@ -17,7 +17,7 @@ by **[@VKirill](https://github.com/VKirill)** · 📢 [Telegram channel: @pomoga
 [![MCP](https://img.shields.io/badge/MCP-server-orange)](https://modelcontextprotocol.io)
 [![Tests](https://img.shields.io/badge/tests-91%20passing-success)](#status)
 
-**Keywords**: claude code memory, claude code mcp server, claude code persistent context, mcp memory server, ai agent memory, persona, vector search, voyage embeddings, openrouter, sqlite-vec, l0 l1 l2 l3 extraction
+**Keywords**: claude code memory, claude code mcp server, claude code persistent context, mcp memory server, ai agent memory, persona, vector search, openai embeddings, openrouter, sqlite-vec, l0 l1 l2 l3 extraction
 
 </div>
 
@@ -50,7 +50,7 @@ recent work — without you having to re-explain it.
 ## Quick start (5 commands)
 
 Prerequisites: **Node ≥ 22.16**, Claude Code installed, an OpenRouter API key
-and a Voyage AI API key. See [INSTALL.md](./INSTALL.md) for full details.
+and an OpenAI API key. See [INSTALL.md](./INSTALL.md) for full details.
 
 ```bash
 # 1. Install
@@ -59,7 +59,7 @@ npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.5.0
 # 2. Put your keys in ~/.claude/claude-mem.env
 cat > ~/.claude/claude-mem.env <<'EOF'
 OPENROUTER_API_KEY=sk-or-v1-...
-VOYAGE_API_KEY=pa-...
+OPENAI_API_KEY=sk-...
 EOF
 chmod 600 ~/.claude/claude-mem.env
 
@@ -154,7 +154,7 @@ Claude Code can call these tools mid-conversation:
 
 | Tool | What it does |
 |---|---|
-| `mcp__tencentdb-memory__memory_search` | Search L1 facts by semantic similarity (Voyage vector) or keyword fallback. Returns top-K matches. |
+| `mcp__tencentdb-memory__memory_search` | Search L1 facts by semantic similarity (OpenAI vector) or keyword fallback. Returns top-K matches. |
 | `mcp__tencentdb-memory__conversation_search` | Keyword search over raw L0 turns. Use to find verbatim past exchanges. |
 | `mcp__tencentdb-memory__recall_persona` | Return the full current persona.md content. |
 | `mcp__tencentdb-memory__recall_scenes` | List all scene blocks with filenames + summaries. |
@@ -181,7 +181,9 @@ Each project's `.claude/memory/config.json` controls behavior:
     "model": "tencent/hy3-preview"
   },
   "embedding": {
-    "model": "voyage-3-lite",
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "baseUrl": "https://api.openai.com/v1",
     "recallTimeoutMs": 1500
   },
   "recall": {
@@ -310,7 +312,7 @@ project has 50+ sessions and L3 needs more time.
 |---|---|
 | Version | 0.5.0 |
 | Tests | 91 passing |
-| Stack | Node 22 · TypeScript · SQLite · Voyage embeddings · OpenRouter |
+| Stack | Node 22 · TypeScript · SQLite · OpenAI embeddings · OpenRouter |
 | License | MIT (see [LICENSE](./LICENSE) and [NOTICE.md](./NOTICE.md) for upstream attribution) |
 | Maintainer | [@VKirill](https://github.com/VKirill) |
 | Upstream | [Tencent/TencentDB-Agent-Memory](https://github.com/Tencent/TencentDB-Agent-Memory) |
