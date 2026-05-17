@@ -9,6 +9,31 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.5.1] — 2026-05-17
+
+Cosmetic follow-up to v0.5.0: align the on-disk hook directory name with
+the package identity. The folder `~/.claude/hooks/claude-mem/` from v0.4.x
+and earlier is now installed as `~/.claude/hooks/tencentdb-memory/`.
+Existing installs are migrated transparently — no manual steps required.
+
+### Changed
+- `install.sh` default `HOOKS_DIR` → `~/.claude/hooks/tencentdb-memory`
+  (still overridable via `CLAUDE_HOOKS_DIR` env var)
+- `install.sh` migration block: if a legacy `~/.claude/hooks/claude-mem/`
+  exists and the new path does not, the folder is `mv`'d in place
+- `install.sh` settings.json patch: hook command paths
+  `hooks/claude-mem/` are rewritten to `hooks/tencentdb-memory/`
+  (backup saved to `.bak.before-v0.5.1`)
+
+### Notes
+- The `~/.claude/claude-mem-projects.txt` allowlist filename is **not**
+  renamed; the scheduler still reads from this exact path for
+  back-compat with existing user files.
+- If you set `CLAUDE_HOOKS_DIR` explicitly, the migration is skipped and
+  your override is honoured as before.
+
+---
+
 ## [0.5.0] — 2026-05-17
 
 **BREAKING:** CLI binary renamed `claude-mem` → `tencentdb-mem` to eliminate

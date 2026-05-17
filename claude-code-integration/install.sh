@@ -22,7 +22,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATES_DIR="$SCRIPT_DIR/templates"
 SETTINGS_FILE="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
-HOOKS_DIR="${CLAUDE_HOOKS_DIR:-$HOME/.claude/hooks/claude-mem}"
+HOOKS_DIR="${CLAUDE_HOOKS_DIR:-$HOME/.claude/hooks/tencentdb-memory}"
+LEGACY_HOOKS_DIR="$HOME/.claude/hooks/claude-mem"
 # Read version dynamically from package.json so install.sh and package
 # stay in sync without manual bumping (v0.2.1 fix).
 PKG_JSON="$SCRIPT_DIR/../package.json"
@@ -90,6 +91,22 @@ if (tdm && tdm.command && tdm.command.endsWith("/claude-mem")) {
   console.log("claude-mem install: migrated ~/.claude.json MCP command to tencentdb-mem");
 }
 '
+
+# ── v0.5.1: migrate hooks directory claude-mem → tencentdb-memory ────
+# The hook folder name on disk used to be `claude-mem/` for historical
+# reasons. v0.5.1 aligns it with the package identity. We migrate
+# transparently so existing installs do not end up with two parallel
+# folders. The CLAUDE_HOOKS_DIR env override still wins over both.
+if [[ -d "$LEGACY_HOOKS_DIR" && ! -d "$HOOKS_DIR" && -z "${CLAUDE_HOOKS_DIR:-}" ]]; then
+  mv "$LEGACY_HOOKS_DIR" "$HOOKS_DIR"
+  echo "claude-mem install: migrated $LEGACY_HOOKS_DIR → $HOOKS_DIR"
+fi
+# Rewrite any hook-path references in settings.json so they point at the
+# new directory. Idempotent: no-op if already pointing at tencentdb-memory.
+if [[ -f "$SETTINGS_FILE" ]] && grep -q "hooks/claude-mem/" "$SETTINGS_FILE" 2>/dev/null; then
+  sed -i.bak.before-v0.5.1 's|hooks/claude-mem/|hooks/tencentdb-memory/|g' "$SETTINGS_FILE"
+  echo "claude-mem install: rewrote settings.json hook paths claude-mem → tencentdb-memory"
+fi
 
 # ── Conflict detection: claude-mem v12.7.5 ───────────────────────────
 
