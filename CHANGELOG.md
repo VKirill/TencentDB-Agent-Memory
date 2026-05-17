@@ -9,6 +9,37 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.5.5] — 2026-05-17
+
+### Changed
+- Default LLM model switched from tencent/hy3-preview to deepseek/deepseek-v4-flash.
+  Benchmark on identical L1 extraction prompt: DeepSeek 8x faster (7s vs 61s),
+  6x cheaper per call ($0.0005 vs $0.003), better quality (caught instruction-type
+  fact Hy3 missed). Hy3 is a reasoning model whose always-on chain-of-thought
+  burned 10K+ output tokens internally before producing content. (189d1be)
+- DeepSeek v4-flash supports response_format and structured_outputs natively;
+  1M context window vs Hy3's 32K — headroom for future structured-output
+  enforcement and large extraction batches.
+
+### Fixed
+- Removed hardcoded maxTokens=4096 fallback from the standalone LLM runner.
+  Cap was inherited from gpt-3.5 era; for reasoning models it caused silent
+  failures (finish_reason=length, empty content) — model burned the output
+  budget on hidden reasoning. With maxTokens undefined, AI SDK omits the
+  parameter and each model uses its provider-side default. Per-caller and
+  per-config overrides still work. (db9fe85)
+- Removed dead `compatibility: "compatible"` option from createOpenAI() call.
+  Dropped from OpenAIProviderSettings in @ai-sdk/openai 3.x; silently ignored
+  at runtime but polluted TypeScript diagnostics. (175edc9)
+
+### Migration note
+- Fresh installs pick up the new default. Users with explicit `model` in
+  their config.json are unaffected — config wins over template.
+- No DB schema change.
+- Env var unchanged — OPENROUTER_API_KEY still drives LLM access.
+
+---
+
 ## [0.5.4] — 2026-05-17
 
 ### Changed
