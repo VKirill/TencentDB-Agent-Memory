@@ -8,14 +8,14 @@
   "extraction": {
     "enableDedup": true,
     "maxMemoriesPerSession": 20,
-    "model": "tencent/hy3-preview"
+    "model": "deepseek/deepseek-v4-flash"
   },
   "persona": {
     "triggerEveryN": 50,
     "maxScenes": 20,
     "backupCount": 3,
     "sceneBackupCount": 10,
-    "model": "tencent/hy3-preview"
+    "model": "deepseek/deepseek-v4-flash"
   },
   "pipeline": {
     "everyNConversations": 0,
@@ -43,7 +43,7 @@
     "enabled": true,
     "baseUrl": "https://openrouter.ai/api/v1",
     "apiKey": "",
-    "model": "tencent/hy3-preview",
-    "_R1_fallback_comment": "If Hy3 smoke test (v0.2 WP3.6) shows <95% valid-JSON rate, switch to: \"model\": \"anthropic/claude-sonnet-4.6\" for L0→L1 only; keep Hy3 for L2/L3 via per-stage model override."
+    "model": "deepseek/deepseek-v4-flash",
+    "_deepseek_v4_flash_comment": "deepseek-v4-flash supports response_format and structured_outputs natively, plus 1M context. If quality issue arises on persona generation, fall back to anthropic/claude-sonnet."
   }
 }

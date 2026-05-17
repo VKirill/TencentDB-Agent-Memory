@@ -173,12 +173,12 @@ Each project's `.claude/memory/config.json` controls behavior:
 {
   "extraction": {
     "enabled": true,
-    "model": "tencent/hy3-preview"
+    "model": "deepseek/deepseek-v4-flash"
   },
   "persona": {
     "triggerEveryN": 50,
     "maxScenes": 20,
-    "model": "tencent/hy3-preview"
+    "model": "deepseek/deepseek-v4-flash"
   },
   "embedding": {
     "provider": "openai",
@@ -195,7 +195,7 @@ Each project's `.claude/memory/config.json` controls behavior:
 
 ### Switching the LLM provider
 
-Default model is `tencent/hy3-preview` via OpenRouter (cheap, fast). If you
+Default model is `deepseek/deepseek-v4-flash` via OpenRouter (1M context, native structured outputs, ~$0.11/M tokens). If you
 observe thin extraction (L1 produces 0 facts on full conversations), switch
 to Sonnet 4.6 for the extraction stage:
 
