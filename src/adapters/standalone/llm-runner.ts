@@ -181,7 +181,7 @@ export class StandaloneLLMRunner implements LLMRunner {
   async run(params: LLMRunParams): Promise<string> {
     const runStartMs = Date.now();
     const timeoutMs = params.timeoutMs ?? this.config.timeoutMs ?? 120_000;
-    const maxTokens = params.maxTokens ?? this.config.maxTokens ?? 4096;
+    const maxTokens = params.maxTokens ?? this.config.maxTokens;
     const workspaceDir = params.workspaceDir ?? process.cwd();
 
     this.logger?.debug?.(

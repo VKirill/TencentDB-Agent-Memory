@@ -190,8 +190,8 @@ export interface StandaloneLLMOverrideConfig {
   apiKey: string;
   /** Model name (e.g. "gpt-4o", "deepseek-v3", "claude-sonnet-4-6"). */
   model: string;
-  /** Max output tokens (default: 4096). */
-  maxTokens: number;
+  /** Max output tokens; optional — when omitted, the AI SDK lets the model use its own default output cap. */
+  maxTokens: number | undefined;
   /** Request timeout in milliseconds (default: 120000). */
   timeoutMs: number;
 }
@@ -535,7 +535,7 @@ export function parseConfig(raw: Record<string, unknown> | undefined): MemoryTda
         baseUrl: str(llmGroup, "baseUrl") ?? "https://api.openai.com/v1",
         apiKey: str(llmGroup, "apiKey") ?? "",
         model: str(llmGroup, "model") ?? "gpt-4o",
-        maxTokens: num(llmGroup, "maxTokens") ?? 4096,
+        maxTokens: num(llmGroup, "maxTokens"),
         timeoutMs: num(llmGroup, "timeoutMs") ?? 120_000,
       };
     })(),
