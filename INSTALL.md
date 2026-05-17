@@ -32,7 +32,8 @@ is operational: run these commands, get a working install.
    - Sign up: https://platform.openai.com/api-keys
    - Create key: dashboard → API keys
    - Format: starts with `sk-proj-...` or `sk-...`
-   - Cost: ~$0.02 per 1M tokens (text-embedding-3-small)
+   - Cost: ~$0.13 per 1M tokens (text-embedding-3-large)
+   - Cheaper alternative: text-embedding-3-small at $0.02/M — change `model` in config.json. Default uses large for best retrieval quality.
 
    Voyage AI is also supported as an alternative — see config docs.
 

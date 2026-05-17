@@ -182,7 +182,7 @@ Each project's `.claude/memory/config.json` controls behavior:
   },
   "embedding": {
     "provider": "openai",
-    "model": "text-embedding-3-small",
+    "model": "text-embedding-3-large",
     "baseUrl": "https://api.openai.com/v1",
     "recallTimeoutMs": 1500
   },
