@@ -232,12 +232,12 @@ Tencent оригинально проектировал L3 как «персон
 {
   "extraction": {
     "enabled": true,
-    "model": "tencent/hy3-preview"
+    "model": "deepseek/deepseek-v4-flash"
   },
   "persona": {
     "triggerEveryN": 50,
     "maxScenes": 20,
-    "model": "tencent/hy3-preview"
+    "model": "deepseek/deepseek-v4-flash"
   },
   "embedding": {
     "model": "voyage-3-lite",
@@ -252,8 +252,7 @@ Tencent оригинально проектировал L3 как «персон
 
 ### Переключение LLM-провайдера
 
-По умолчанию используется `tencent/hy3-preview` через OpenRouter (дёшево,
-быстро). Если видишь thin extraction (L1 даёт 0 фактов из полных разговоров),
+По умолчанию используется `deepseek/deepseek-v4-flash` через OpenRouter (1M контекст, native structured outputs, ~$0.11/M токенов). Если видишь thin extraction (L1 даёт 0 фактов из полных разговоров),
 переключи extraction stage на Sonnet 4.6:
 
 ```json

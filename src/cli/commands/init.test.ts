@@ -49,7 +49,7 @@ describe("runInit", () => {
     const cfg = JSON.parse(fs.readFileSync(path.join(memDir, "config.json"), "utf-8"));
     // Sanity: it loaded the default template
     expect(cfg.embedding.provider).toBe("openai");
-    expect(cfg.llm.model).toBe("tencent/hy3-preview");
+    expect(cfg.llm.model).toBe("deepseek/deepseek-v4-flash");
 
     // .gitignore must hide the whole memory dir from the project's git
     const gi = fs.readFileSync(path.join(memDir, ".gitignore"), "utf-8");

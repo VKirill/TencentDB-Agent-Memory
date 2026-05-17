@@ -18,7 +18,7 @@ verbatim from upstream. This is the value-bearing asset of the fork.
   `src/offload/`, `src/gateway/`, all postinstall patches)
 - Re-targeted at a standalone CLI (`init`, `capture`, `recall`, `stats`)
   for use with Claude Code and other agents
-- Defaults to OpenRouter (`tencent/hy3-preview`) as the LLM provider
+- Defaults to OpenRouter (`deepseek/deepseek-v4-flash`) as the LLM provider
   and OpenAI (`text-embedding-3-large`, 1024-d) as the embedding provider —
   both via OpenAI-compatible HTTP
 

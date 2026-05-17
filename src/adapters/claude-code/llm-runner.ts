@@ -1,6 +1,6 @@
 /**
  * ClaudeCodeLLMRunnerFactory — wraps StandaloneLLMRunnerFactory with
- * OpenRouter Hy3 defaults. Reads OPENROUTER_API_KEY from env if not
+ * OpenRouter deepseek-v4-flash defaults. Reads OPENROUTER_API_KEY from env if not
  * supplied in config.
  *
  * v0.2 wraps (does not subclass) StandaloneLLMRunnerFactory because
@@ -15,7 +15,7 @@ import { getEnv } from "../../utils/env.js";
 
 const DEFAULTS = {
   baseUrl: "https://openrouter.ai/api/v1",
-  model: "tencent/hy3-preview",
+  model: "deepseek/deepseek-v4-flash",
 };
 
 export interface ClaudeCodeLLMRunnerFactoryOptions {
