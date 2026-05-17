@@ -9,6 +9,36 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.5.6] — 2026-05-18
+
+### Fixed
+- runCapture now dedupes against the last user+assistant pair in today's JSONL.
+  Stop hook in Claude Code fires per-turn (after every Claude response), not per
+  session — and the wrapper captures the rolling 4 KB transcript tail each time.
+  Real install showed 40% duplication (269 of 662 L0 rows were exact copies).
+  Guard compares incoming (user, assistant) tuple to the last pair under the same
+  sessionKey; if identical, the write is skipped and returns ok=true, l0Recorded=0
+  with a debug log. (53d7ce2)
+
+### Added
+- settings.json.template now subscribes to PreCompact and SessionEnd events in
+  addition to Stop. Same stop-wrapper.sh handles all three (they share the
+  transcript_path schema). With the dedup above this is safe — multiple events
+  firing on the same content stay idempotent. (53d7ce2)
+  - PreCompact lets us capture the full dialogue BEFORE context compaction.
+  - SessionEnd catches /clear, /compact, /exit, /logout — paths Stop alone never sees.
+- install.sh's existing jq deep-merge passes the new event keys through
+  automatically; users get the new subscriptions on next install.sh run.
+
+### Migration note
+- Existing installs: re-run install.sh to pick up the new event subscriptions
+  in ~/.claude/settings.json.
+- Existing JSONL with historical duplicates is unaffected — the dedup is only
+  for new writes.
+- No DB schema change.
+
+---
+
 ## [0.5.5] — 2026-05-17
 
 ### Changed
