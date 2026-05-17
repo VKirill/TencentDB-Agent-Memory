@@ -50,7 +50,9 @@ const LOG_FILE = "memory.log";
  *   1. Read `.claude/memory/config.json` (throws if missing).
  *   2. Parse via `parseConfig()` → `MemoryTdaiConfig`.
  *   3. Merge env vars `OPENROUTER_API_KEY` → `config.llm.apiKey`,
- *      `VOYAGE_API_KEY` → `config.embedding.apiKey`. Env wins over file
+ *      `OPENAI_API_KEY` → `config.embedding.apiKey` (primary). When
+ *      `OPENAI_API_KEY` is absent, `VOYAGE_API_KEY` is tried as a fallback
+ *      so Voyage remains usable as an opt-in alternative. Env wins over file
  *      (file should never contain secrets; init writes empty `apiKey`).
  *   4. Construct a file-only logger writing to `memory.log`.
  *
@@ -82,17 +84,20 @@ export async function loadContext(opts: LoadContextOptions): Promise<ClaudeCliCo
   // Bug fix (codex adversarial review, 2026-05-16): parseConfig validates
   // the embedding block and disables the provider when apiKey is empty.
   // Merging env after parseConfig would set apiKey but leave enabled=false,
-  // silently disabling embeddings even with a valid VOYAGE_API_KEY.
+  // silently disabling embeddings even with a valid OPENAI_API_KEY.
   // Merge before parsing so validation sees the resolved keys.
+  //
+  // Primary: OPENAI_API_KEY (default provider is openai).
+  // Fallback: VOYAGE_API_KEY — retained for Voyage opt-in configs.
   const openrouterKey = getEnv("OPENROUTER_API_KEY");
-  const voyageKey = getEnv("VOYAGE_API_KEY");
+  const embeddingKey = getEnv("OPENAI_API_KEY") ?? getEnv("VOYAGE_API_KEY");
   if (openrouterKey) {
     const llmRaw = (raw.llm as Record<string, unknown> | undefined) ?? {};
     raw.llm = { ...llmRaw, apiKey: openrouterKey };
   }
-  if (voyageKey) {
+  if (embeddingKey) {
     const embRaw = (raw.embedding as Record<string, unknown> | undefined) ?? {};
-    raw.embedding = { ...embRaw, apiKey: voyageKey };
+    raw.embedding = { ...embRaw, apiKey: embeddingKey };
   }
 
   const config = parseConfig(raw);

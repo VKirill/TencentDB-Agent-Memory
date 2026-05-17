@@ -80,7 +80,7 @@ export async function runVectorRecall(
 
   // ── Branch 2: no apiKey → fallback ─────────────────────────────────
   if (!ctx.apiKey) {
-    ctx.logger.debug?.("recall: no VOYAGE_API_KEY, falling back to keyword");
+    ctx.logger.debug?.("recall: no OPENAI_API_KEY (or VOYAGE_API_KEY), falling back to keyword");
     return null;
   }
 

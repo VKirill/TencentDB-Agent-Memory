@@ -48,7 +48,7 @@ describe("runInit", () => {
 
     const cfg = JSON.parse(fs.readFileSync(path.join(memDir, "config.json"), "utf-8"));
     // Sanity: it loaded the default template
-    expect(cfg.embedding.provider).toBe("voyage");
+    expect(cfg.embedding.provider).toBe("openai");
     expect(cfg.llm.model).toBe("tencent/hy3-preview");
 
     // .gitignore must hide the whole memory dir from the project's git
@@ -86,7 +86,7 @@ describe("runInit", () => {
     expect(result.created).toBe(true);
     const after = JSON.parse(fs.readFileSync(cfgPath, "utf-8"));
     expect(after.marker).toBeUndefined();
-    expect(after.embedding.provider).toBe("voyage");
+    expect(after.embedding.provider).toBe("openai");
   });
 
   it("silent:true suppresses result.message (used by auto-init from hooks)", async () => {

@@ -28,11 +28,14 @@ is operational: run these commands, get a working install.
    - Format: starts with `sk-or-v1-...`
    - Cost: pay-per-use; expect ~$0.50-2/day on active days with the default Hy3 model
 
-2. **Voyage AI API key** — used for semantic vector recall of L1 facts.
-   - Sign up: https://www.voyageai.com/
+2. **OpenAI API key** — used for semantic vector recall of L1 facts.
+   - Sign up: https://platform.openai.com/api-keys
    - Create key: dashboard → API keys
-   - Format: starts with `pa-...`
-   - Cost: free tier covers ~1M tokens/month — plenty for personal use
+   - Format: starts with `sk-proj-...` or `sk-...`
+   - Cost: ~$0.13 per 1M tokens (text-embedding-3-large)
+   - Cheaper alternative: text-embedding-3-small at $0.02/M — change `model` in config.json. Default uses large for best retrieval quality.
+
+   Voyage AI is also supported as an alternative — see config docs.
 
 ### Optional but strongly recommended
 
@@ -76,7 +79,7 @@ Create `~/.claude/claude-mem.env` with mode 600 (owner-only readable):
 mkdir -p ~/.claude
 cat > ~/.claude/claude-mem.env <<'EOF'
 OPENROUTER_API_KEY=sk-or-v1-PASTE_YOUR_KEY_HERE
-VOYAGE_API_KEY=pa-PASTE_YOUR_KEY_HERE
+OPENAI_API_KEY=sk-PASTE_YOUR_KEY_HERE
 EOF
 chmod 600 ~/.claude/claude-mem.env
 ```

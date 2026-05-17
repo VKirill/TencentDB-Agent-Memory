@@ -128,7 +128,7 @@ export interface RunExtractResult {
 }
 
 /**
- * Load OPENROUTER_API_KEY + VOYAGE_API_KEY from `~/.claude/claude-mem.env`
+ * Load OPENROUTER_API_KEY + OPENAI_API_KEY (or VOYAGE_API_KEY) from `~/.claude/claude-mem.env`
  * into process.env if the file exists. Mirrors the `set -a; . file; set +a`
  * pattern from hook wrappers — needed because terminal-invoked extract
  * bypasses wrappers entirely. P1 fix from codex adversarial review.
