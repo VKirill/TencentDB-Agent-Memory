@@ -9,6 +9,29 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.5.3] — 2026-05-17
+
+### Added
+- install.sh now auto-starts the PM2 scheduler when pm2 is on PATH. Idempotent (skips if
+  already running), error-tolerant (set +e around pm2 calls), retains print-instructions
+  fallback for systems without pm2. (5b7fa55)
+
+### Changed
+- Default embedding provider switched from Voyage AI to OpenAI. New default model is
+  text-embedding-3-large at 1024-d. Voyage remains supported via config.json plus
+  VOYAGE_API_KEY fallback. Cost goes from $0.02 to $0.13 per 1M tokens — negligible at
+  hobbyist volume; text-embedding-3-small is documented as cheaper alternative.
+  (b89f26a, ab138b7)
+- MCP server version is now read dynamically from package.json (previously hardcoded). (5b7fa55)
+
+### Breaking
+- Embedding vector schema: 512-d → 1024-d. Existing l1_vec/l0_vec columns at 512-d will
+  reject 1024-d writes. Migration: stop scheduler, archive vectors.db, restart — scheduler
+  recreates the DB on next tick. No automated migration in this release.
+- Required env var: OPENAI_API_KEY (or VOYAGE_API_KEY for the Voyage opt-in path).
+
+---
+
 ## [0.5.2] — 2026-05-17
 
 Three cosmetic loose-ends from the v0.5.0/0.5.1 renaming sweep.

@@ -44,3 +44,14 @@ test-offload-sessions.sh
 # npm pack / release tarballs (never commit packaged outputs)
 *.tgz
 *.tar.gz
+
+# Secrets safety net (in addition to .env above)
+.env.local
+.env.*.local
+*.pem
+*.key
+secret*
+*_api_key*
+.openai-key
+.voyage-key
+claude-mem.env
