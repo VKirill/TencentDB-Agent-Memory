@@ -1,5 +1,5 @@
 /**
- * MCP server for claude-mem — v0.4.0
+ * MCP server for claude-mem — v0.5.0
  *
  * Exposes 4 tools over stdio so Claude Code can call memory operations
  * directly via MCP instead of spawning hook scripts:
@@ -14,12 +14,9 @@
 
 import pkg from "../../package.json" with { type: "json" };
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 import { runRecall } from "../cli/commands/recall.js";
 import { loadContextOrAutoInit } from "../cli/context.js";
@@ -143,97 +140,81 @@ export async function handleRecallScenes(): Promise<string> {
 
 // ── Server setup ─────────────────────────────────────────────────────────────
 
-const TOOLS = [
-  {
-    name: "memory_search",
-    description:
-      "Search L1 structured memories (facts) by semantic similarity (Voyage vector) or keyword fallback. Returns top-K matches with type, content, and score.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        query: { type: "string", description: "Search query text" },
-        limit: {
-          type: "number",
-          description: "Maximum number of matches to return (default 5)",
-        },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "conversation_search",
-    description:
-      "Search raw L0 conversation history (verbatim user/assistant turns) by keyword substring. Returns top-K matching turns with timestamp.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        query: { type: "string", description: "Keyword search query" },
-        limit: {
-          type: "number",
-          description: "Maximum number of turns to return (default 5)",
-        },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "recall_persona",
-    description:
-      "Return the full persona.md (L3 user / coder profile) for the current project. Returns empty sentinel if persona not yet generated.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: "recall_scenes",
-    description:
-      "List all L2 scene blocks (thematic memory groupings) with filename, heat, and summary. Use this to discover what topics have been captured.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {},
-      required: [],
-    },
-  },
-];
-
 export async function runMcpServer(): Promise<void> {
-  const server = new Server(
+  const server = new McpServer(
     { name: "tencentdb-memory", version: pkg.version },
     { capabilities: { tools: {} } },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS,
-  }));
+  server.registerTool(
+    "memory_search",
+    {
+      description:
+        "Search L1 structured memories (facts) by semantic similarity (Voyage vector) or keyword fallback. Returns top-K matches with type, content, and score.",
+      inputSchema: {
+        query: z.string().describe("Search query text"),
+        limit: z
+          .number()
+          .optional()
+          .describe("Maximum number of matches to return (default 5)"),
+      },
+    },
+    async (args) => ({
+      content: [
+        {
+          type: "text" as const,
+          text: await handleMemorySearch(args as Record<string, unknown>),
+        },
+      ],
+    }),
+  );
 
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const { name, arguments: args } = req.params;
-    const safeArgs = (args ?? {}) as Record<string, unknown>;
+  server.registerTool(
+    "conversation_search",
+    {
+      description:
+        "Search raw L0 conversation history (verbatim user/assistant turns) by keyword substring. Returns top-K matching turns with timestamp.",
+      inputSchema: {
+        query: z.string().describe("Keyword search query"),
+        limit: z
+          .number()
+          .optional()
+          .describe("Maximum number of turns to return (default 5)"),
+      },
+    },
+    async (args) => ({
+      content: [
+        {
+          type: "text" as const,
+          text: await handleConversationSearch(
+            args as Record<string, unknown>,
+          ),
+        },
+      ],
+    }),
+  );
 
-    let text: string;
-    switch (name) {
-      case "memory_search":
-        text = await handleMemorySearch(safeArgs);
-        break;
-      case "conversation_search":
-        text = await handleConversationSearch(safeArgs);
-        break;
-      case "recall_persona":
-        text = await handleRecallPersona();
-        break;
-      case "recall_scenes":
-        text = await handleRecallScenes();
-        break;
-      default:
-        text = `unknown tool: ${name}`;
-    }
+  server.registerTool(
+    "recall_persona",
+    {
+      description:
+        "Return the full persona.md (L3 user / coder profile) for the current project. Returns empty sentinel if persona not yet generated.",
+    },
+    async () => ({
+      content: [{ type: "text" as const, text: await handleRecallPersona() }],
+    }),
+  );
 
-    return {
-      content: [{ type: "text" as const, text }],
-    };
-  });
+  server.registerTool(
+    "recall_scenes",
+    {
+      description:
+        "List all L2 scene blocks (thematic memory groupings) with filename, heat, and summary. Use this to discover what topics have been captured.",
+    },
+    async () => ({
+      content: [{ type: "text" as const, text: await handleRecallScenes() }],
+    }),
+  );
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
