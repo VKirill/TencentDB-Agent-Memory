@@ -9,6 +9,21 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.5.4] — 2026-05-17
+
+### Changed
+- Migrated MCP server from deprecated low-level `Server` to high-level `McpServer` SDK API
+  in `src/mcp/server.ts`. Four tools (memory_search, conversation_search, recall_persona,
+  recall_scenes) re-wired via declarative `registerTool()`. Behavior preserved byte-equivalent —
+  same names, descriptions, schemas, handlers. Verified via JSON-RPC smoke test
+  (initialize + tools/list). (8fac142)
+
+### Added
+- zod@4.4.3 as explicit production dependency (was implicit transitive via SDK + ai-sdk).
+  Prevents silent breakage if upstream drops zod from their dep tree. (8fac142)
+
+---
+
 ## [0.5.3] — 2026-05-17
 
 ### Added
