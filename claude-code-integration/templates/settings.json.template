@@ -45,6 +45,30 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<WRAPPER_DIR>/stop-wrapper.sh",
+            "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<WRAPPER_DIR>/stop-wrapper.sh",
+            "timeout": 8000
+          }
+        ]
+      }
     ]
   }
 }
