@@ -12,6 +12,8 @@
  * ADR-3: stdio transport (Claude Code spawns this via `claude-mem mcp serve`).
  */
 
+import pkg from "../../package.json" with { type: "json" };
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -198,7 +200,7 @@ const TOOLS = [
 
 export async function runMcpServer(): Promise<void> {
   const server = new Server(
-    { name: "tencentdb-memory", version: "0.4.2" },
+    { name: "tencentdb-memory", version: pkg.version },
     { capabilities: { tools: {} } },
   );
 

@@ -36,8 +36,9 @@ is operational: run these commands, get a working install.
 
 ### Optional but strongly recommended
 
-- **PM2** — for the auto-extract daemon. `npm i -g pm2`. Without PM2 you'd
-  have to run `tencentdb-mem extract` manually in each project.
+- **PM2** — strongly recommended. `npm i -g pm2`. `install.sh` will
+  auto-start the scheduler daemon if pm2 is detected; without pm2, the
+  auto-extraction hook is wired but inert (no background extraction runs).
 
 ---
 
@@ -151,26 +152,38 @@ hook invocation (auto-init).
 
 ---
 
-## Step 5 — Start the PM2 scheduler
+## Step 5 — PM2 scheduler (auto-started by install.sh)
 
-```bash
-pm2 start ~/.claude/hooks/claude-mem/scheduler.cjs --name claude-mem-scheduler
-pm2 save                 # persist across reboots
-pm2 startup              # follow the printed instructions to enable systemd startup
-```
-
-The scheduler runs `tencentdb-mem extract` in each allowlisted project every
-30 minutes (configurable via `CLAUDE_MEM_INTERVAL_MIN`).
+`install.sh` detects pm2 and starts the scheduler automatically — if you saw
+`[install] pm2: started tencentdb-memory-scheduler` in the Step 3 output,
+you're done. Also runs `pm2 save` automatically so the process survives
+pm2 restarts.
 
 Verify it's running:
 
 ```bash
 pm2 status
-# → claude-mem-scheduler should show "online"
+# → tencentdb-memory-scheduler should show "online"
 
-pm2 logs claude-mem-scheduler --lines 20
+pm2 logs tencentdb-memory-scheduler --lines 20
 # → should show "tick: 0 project(s) to process" (if allowlist empty) or
 #   "extract: project=..." entries
+```
+
+The scheduler runs `tencentdb-mem extract` in each allowlisted project every
+30 minutes (configurable via `CLAUDE_MEM_INTERVAL_MIN`).
+
+**Fallback — if pm2 was not present during install, or you want to start it manually:**
+
+```bash
+pm2 start ~/.claude/hooks/tencentdb-memory/scheduler.cjs --name tencentdb-memory-scheduler
+pm2 save
+```
+
+**Boot-time persistence (optional, needs sudo):**
+
+```bash
+pm2 startup              # follow the printed instructions to enable systemd startup
 ```
 
 ---

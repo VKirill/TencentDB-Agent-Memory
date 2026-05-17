@@ -276,7 +276,30 @@ if [[ ! -f "$ALLOWLIST_FILE" ]]; then
   echo "claude-mem install: → add project paths (one absolute per line) to opt them in"
 fi
 
-if command -v pm2 >/dev/null 2>&1; then
+if command -v pm2 >/dev/null 2>&1 && [[ -f "$SCHEDULER_DST" ]]; then
+  RUNNING=$(pm2 jlist 2>/dev/null | node -e \
+    'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{try{const a=JSON.parse(s);process.stdout.write(a.some(p=>p.name==="tencentdb-memory-scheduler")?"1":"0")}catch{process.stdout.write("0")}})' \
+    2>/dev/null || echo "0")
+  if [[ "$RUNNING" == "1" ]]; then
+    echo ""
+    echo "claude-mem install: scheduler already running in pm2, skipping start"
+  else
+    echo ""
+    set +e
+    PM2_ERR=$(pm2 start "$SCHEDULER_DST" --name tencentdb-memory-scheduler 2>&1)
+    PM2_RC=$?
+    set -e
+    if [[ $PM2_RC -ne 0 ]]; then
+      echo "claude-mem install: pm2 start failed (exit $PM2_RC): $PM2_ERR" >&2
+      echo "  manual fallback: pm2 start $SCHEDULER_DST --name tencentdb-memory-scheduler && pm2 save"
+    else
+      pm2 save >/dev/null 2>&1 || true
+      echo "claude-mem install: scheduler started via pm2 (tencentdb-memory-scheduler)"
+      echo "  logs: pm2 logs tencentdb-memory-scheduler"
+    fi
+  fi
+  echo "claude-mem install: for boot persistence run: pm2 startup  (requires sudo, writes systemd unit)"
+elif command -v pm2 >/dev/null 2>&1; then
   echo ""
   echo "claude-mem install: to start auto-extract daemon (every 30 min):"
   echo "  pm2 start $SCHEDULER_DST --name tencentdb-memory-scheduler"
