@@ -59,7 +59,7 @@ fi
 CLAUDE_MEM_BIN="${CLAUDE_MEM_BIN:-$(command -v tencentdb-mem || true)}"
 if [[ -z "$CLAUDE_MEM_BIN" ]]; then
   echo "claude-mem install: 'tencentdb-mem' bin not found on PATH." >&2
-  echo "  Install first: npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.5.0" >&2
+  echo "  Install first: npm i -g github:VKirill/TencentDB-Memory-Claude-Code#v0.5.2" >&2
   exit 1
 fi
 echo "claude-mem install: using bin = $CLAUDE_MEM_BIN"
@@ -279,14 +279,14 @@ fi
 if command -v pm2 >/dev/null 2>&1; then
   echo ""
   echo "claude-mem install: to start auto-extract daemon (every 30 min):"
-  echo "  pm2 start $SCHEDULER_DST --name claude-mem-scheduler"
+  echo "  pm2 start $SCHEDULER_DST --name tencentdb-memory-scheduler"
   echo "  pm2 save"
-  echo "  # logs: pm2 logs claude-mem-scheduler"
+  echo "  # logs: pm2 logs tencentdb-memory-scheduler"
 else
   echo ""
   echo "claude-mem install: pm2 NOT found — install it to enable auto-extract:"
   echo "  npm i -g pm2"
-  echo "  pm2 start $SCHEDULER_DST --name claude-mem-scheduler && pm2 save"
+  echo "  pm2 start $SCHEDULER_DST --name tencentdb-memory-scheduler && pm2 save"
 fi
 
 # ── Resolve template placeholders ────────────────────────────────────

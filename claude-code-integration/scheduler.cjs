@@ -14,7 +14,7 @@
 // exit 0 within 60s (hard fallback timer).
 //
 // Install via:
-//   pm2 start ~/.claude/hooks/claude-mem/scheduler.cjs --name tencentdb-mem-scheduler
+//   pm2 start ~/.claude/hooks/tencentdb-memory/scheduler.cjs --name tencentdb-mem-scheduler
 
 "use strict";
 

@@ -9,6 +9,30 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.5.2] — 2026-05-17
+
+Three cosmetic loose-ends from the v0.5.0/0.5.1 renaming sweep.
+
+### Fixed
+- CLI `--version` output now reads from `package.json` dynamically
+  (was a hardcoded string in `src/cli/index.ts`, stale after build).
+  Future bumps automatically reflect in `tencentdb-mem --version` once
+  rebuilt — no second place to update.
+- `install.sh` PM2 hint messages now suggest
+  `--name tencentdb-memory-scheduler` (three locations) instead of the
+  legacy `claude-mem-scheduler` name.
+- `install.sh` "Install first" hint pins the current version
+  (`#v0.5.2`) instead of an older tag.
+- `claude-code-integration/scheduler.cjs` template install-comment
+  references the new path `~/.claude/hooks/tencentdb-memory/...` (was
+  `~/.claude/hooks/claude-mem/...`).
+
+### Build
+- Pre-publish `npm run build` runs as part of `prepack`; dist artifacts
+  bundled match the source version after this release.
+
+---
+
 ## [0.5.1] — 2026-05-17
 
 Cosmetic follow-up to v0.5.0: align the on-disk hook directory name with

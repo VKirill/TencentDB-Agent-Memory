@@ -11,6 +11,9 @@
  * handles itself.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { Command } from "commander";
 import { runInit } from "./commands/init.js";
 import { runCapture } from "./commands/capture.js";
@@ -18,6 +21,20 @@ import { runRecall } from "./commands/recall.js";
 import { runStats, formatStatsReport } from "./commands/stats.js";
 import { runExtract, formatExtractSummary } from "./commands/extract.js";
 
+// Read package.json version dynamically so bin output never lags behind
+// the actual published version. Resolves package.json from <pkg>/dist/
+// upward — the shim at bin/tencentdb-mem.mjs imports the bundled module
+// from <pkg>/dist/index.mjs, so package.json sits one level up.
+function readPkgVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkgPath = join(here, "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 
 export function buildCli(): Command {
   const program = new Command();
@@ -25,7 +42,7 @@ export function buildCli(): Command {
   program
     .name("tencentdb-mem")
     .description("Four-layer local memory for Claude Code and other agents.")
-    .version("0.5.0")
+    .version(readPkgVersion())
     .option("--auto-init", "auto-bootstrap .claude/memory/ on first use (for hook invocation)", false)
     .option(
       "--platform <name>",
