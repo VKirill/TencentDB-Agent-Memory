@@ -13,6 +13,8 @@
  * The CLI wrapper exits 0 always.
  */
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import { loadContextOrAutoInit } from "../context.js";
 import { recordConversation } from "../../core/conversation/l0-recorder.js";
 
@@ -98,6 +100,18 @@ export async function runCapture(opts: RunCaptureOptions): Promise<RunCaptureRes
   const sessionKey = payload.metadata?.sessionKey ?? DEFAULT_SESSION_KEY;
   const sessionId = payload.metadata?.sessionId;
 
+  // Dedup: skip write if the last captured pair in today's JSONL is identical.
+  const isDup = await isIdenticalToLastCapture({
+    dataDir: ctx.dataDir,
+    sessionKey,
+    userContent: payload.user,
+    assistantContent: payload.assistant,
+  });
+  if (isDup) {
+    ctx.logger.debug?.("[capture] dedup skip — identical to last record");
+    return { ok: true, l0Recorded: 0 };
+  }
+
   const nowMs = Date.now();
   const rawMessages: unknown[] = [
     { role: "user", content: payload.user, timestamp: nowMs },
@@ -126,6 +140,99 @@ export async function runCapture(opts: RunCaptureOptions): Promise<RunCaptureRes
     return { ok: false, l0Recorded: 0, error: msg };
   }
 }
+
+// ── Dedup helper ────────────────────────────────────────────────────────────
+
+/**
+ * Format a Date as YYYY-MM-DD using local time — matches l0-recorder's
+ * formatLocalDate scheme so we read the correct daily shard file.
+ */
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Returns true if the last user+assistant pair already stored in today's JSONL
+ * file for this sessionKey is byte-for-byte identical to the incoming payload.
+ * Any I/O error is treated as non-duplicate (safe: worst case we write a dupe,
+ * never silently skip a novel turn).
+ */
+async function isIdenticalToLastCapture(opts: {
+  dataDir: string;
+  sessionKey: string;
+  userContent: string;
+  assistantContent: string;
+}): Promise<boolean> {
+  const todayPath = path.join(
+    opts.dataDir,
+    "conversations",
+    `${formatLocalDate(new Date())}.jsonl`,
+  );
+
+  let raw: string;
+  try {
+    raw = await fs.readFile(todayPath, "utf-8");
+  } catch {
+    // File absent or unreadable — no prior record, not a duplicate.
+    return false;
+  }
+
+  const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return false;
+
+  // Walk backwards to find the last assistant record for this sessionKey,
+  // then look for the preceding user record with the same sessionKey.
+  let lastAssistantContent: string | undefined;
+  let lastAssistantIndex = -1;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let rec: Record<string, unknown>;
+    try {
+      rec = JSON.parse(lines[i]) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (
+      rec.sessionKey === opts.sessionKey &&
+      rec.role === "assistant" &&
+      typeof rec.content === "string"
+    ) {
+      lastAssistantContent = rec.content;
+      lastAssistantIndex = i;
+      break;
+    }
+  }
+
+  if (lastAssistantContent === undefined || lastAssistantIndex < 0) return false;
+
+  // Scan backwards from the assistant record for the preceding user record.
+  let lastUserContent: string | undefined;
+  for (let i = lastAssistantIndex - 1; i >= 0; i--) {
+    let rec: Record<string, unknown>;
+    try {
+      rec = JSON.parse(lines[i]) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (
+      rec.sessionKey === opts.sessionKey &&
+      rec.role === "user" &&
+      typeof rec.content === "string"
+    ) {
+      lastUserContent = rec.content;
+      break;
+    }
+  }
+
+  if (lastUserContent === undefined) return false;
+
+  return lastUserContent === opts.userContent && lastAssistantContent === opts.assistantContent;
+}
+
+// ── Stdin reader ─────────────────────────────────────────────────────────────
 
 /** Max stdin size for capture payload (8 MiB). Larger inputs are rejected
  *  to prevent OOM from runaway or malicious producers. A single turn

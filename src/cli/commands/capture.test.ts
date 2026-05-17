@@ -107,6 +107,46 @@ describe("runCapture", () => {
       expect(log.toLowerCase()).toMatch(/json|parse|capture/);
     }
   });
+
+  it("dedup: skips identical payload; appends different payload", async () => {
+    const projectRoot = makeInitializedProject();
+    await runInit({ projectRoot });
+
+    const firstInput = JSON.stringify({
+      user: "dedup test question",
+      assistant: "dedup test answer",
+    });
+
+    // First call — should write normally.
+    const result1 = await runCapture({ projectRoot, stdin: firstInput });
+    expect(result1.ok).toBe(true);
+    expect(result1.l0Recorded).toBeGreaterThanOrEqual(1);
+
+    const conversationsDir = path.join(projectRoot, ".claude", "memory", "conversations");
+    const getLineCount = () => {
+      const files = findFilesRecursive(conversationsDir).filter((p) => p.endsWith(".jsonl"));
+      return files.map((f) => fs.readFileSync(f, "utf-8").split("\n").filter((l) => l.trim().length > 0).length).reduce((a, b) => a + b, 0);
+    };
+
+    const linesAfterFirst = getLineCount();
+    expect(linesAfterFirst).toBeGreaterThanOrEqual(1);
+
+    // Second call with identical payload — should be skipped.
+    const result2 = await runCapture({ projectRoot, stdin: firstInput });
+    expect(result2.ok).toBe(true);
+    expect(result2.l0Recorded).toBe(0);
+    expect(getLineCount()).toBe(linesAfterFirst); // no new lines appended
+
+    // Third call with a different payload — should append.
+    const differentInput = JSON.stringify({
+      user: "a different question",
+      assistant: "a different answer",
+    });
+    const result3 = await runCapture({ projectRoot, stdin: differentInput });
+    expect(result3.ok).toBe(true);
+    expect(result3.l0Recorded).toBeGreaterThanOrEqual(1);
+    expect(getLineCount()).toBeGreaterThan(linesAfterFirst); // new lines appended
+  });
 });
 
 function findFilesRecursive(dir: string): string[] {
