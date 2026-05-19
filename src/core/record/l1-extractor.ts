@@ -13,7 +13,7 @@
  */
 
 import type { ConversationMessage } from "../conversation/l0-recorder.js";
-import { EXTRACT_MEMORIES_SYSTEM_PROMPT, formatExtractionPrompt } from "../prompts/l1-extraction.js";
+import { EXTRACT_MEMORIES_SYSTEM_PROMPT, EXTRACT_MEMORIES_JSON_SCHEMA, formatExtractionPrompt } from "../prompts/l1-extraction.js";
 import { batchDedup } from "./l1-dedup.js";
 import { writeMemory, generateMemoryId } from "./l1-writer.js";
 import type { ExtractedMemory, MemoryRecord, MemoryType, DedupDecision } from "./l1-writer.js";
@@ -332,6 +332,7 @@ async function callLlmExtraction(params: {
       systemPrompt: EXTRACT_MEMORIES_SYSTEM_PROMPT,
       taskId: "l1-extraction",
       timeoutMs: 180_000,
+      responseSchema: EXTRACT_MEMORIES_JSON_SCHEMA,
     });
   } else {
     // Fallback: create CleanContextRunner (OpenClaw path)
@@ -355,7 +356,9 @@ async function callLlmExtraction(params: {
 
 /**
  * Parse the LLM's JSON response into SceneSegment array.
- * Expected format: [{scene_name, message_ids, memories: [...]}]
+ *
+ * Primary format (json_schema): {"scenes": [{scene_name, message_ids, memories: [...]}]}
+ * Legacy fallback: [{scene_name, message_ids, memories: [...]}] (raw array)
  */
 function parseExtractionResult(raw: string, logger?: Logger): SceneSegment[] {
   try {
@@ -365,10 +368,27 @@ function parseExtractionResult(raw: string, logger?: Logger): SceneSegment[] {
       cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
     }
 
-    // Try to extract JSON array
+    // Step 1: Try parsing as a JSON object with a top-level "scenes" field
+    const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        const sanitized = sanitizeJsonForParse(objectMatch[0]);
+        const parsed = JSON.parse(sanitized) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const obj = parsed as Record<string, unknown>;
+          if (Array.isArray(obj.scenes)) {
+            return buildScenes(obj.scenes as Array<Record<string, unknown>>);
+          }
+        }
+      } catch {
+        // JSON parse failed — fall through to legacy array path
+      }
+    }
+
+    // Step 2: Legacy fallback — raw JSON array (for non-schema callers)
     const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
     if (!arrayMatch) {
-      logger?.warn?.(`${TAG} No JSON array found in extraction response`);
+      logger?.warn?.(`${TAG} No scenes found in extraction response`);
       // [l1-debug] NO_JSON — dump the full raw so we can see what the LLM actually said
       const rawPreview = raw.slice(0, 2048);
       logger?.warn?.(
@@ -386,33 +406,39 @@ function parseExtractionResult(raw: string, logger?: Logger): SceneSegment[] {
       return [];
     }
 
-    const scenes: SceneSegment[] = [];
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") continue;
-      const s = item as Record<string, unknown>;
-
-      scenes.push({
-        scene_name: typeof s.scene_name === "string" ? s.scene_name : "unknown scene",
-        message_ids: Array.isArray(s.message_ids) ? s.message_ids.map(String) : [],
-        memories: Array.isArray(s.memories)
-          ? (s.memories as Array<Record<string, unknown>>)
-              .filter((m) => m && typeof m === "object" && typeof m.content === "string" && (m.content as string).length > 0)
-              .map((m) => ({
-                content: String(m.content),
-                type: String(m.type ?? "episodic"),
-                priority: typeof m.priority === "number" ? m.priority : 50,
-                source_message_ids: Array.isArray(m.source_message_ids) ? m.source_message_ids.map(String) : [],
-                metadata: (m.metadata && typeof m.metadata === "object" ? m.metadata : {}) as Record<string, unknown>,
-              }))
-          : [],
-      });
-    }
-
-    return scenes;
+    return buildScenes(parsed as Array<Record<string, unknown>>);
   } catch (err) {
     logger?.warn?.(`${TAG} Failed to parse extraction result: ${err instanceof Error ? err.message : String(err)}`);
     return [];
   }
+}
+
+/**
+ * Build SceneSegment array from a parsed array of scene objects.
+ */
+function buildScenes(items: Array<unknown>): SceneSegment[] {
+  const scenes: SceneSegment[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const s = item as Record<string, unknown>;
+
+    scenes.push({
+      scene_name: typeof s.scene_name === "string" ? s.scene_name : "unknown scene",
+      message_ids: Array.isArray(s.message_ids) ? s.message_ids.map(String) : [],
+      memories: Array.isArray(s.memories)
+        ? (s.memories as Array<Record<string, unknown>>)
+            .filter((m) => m && typeof m === "object" && typeof m.content === "string" && (m.content as string).length > 0)
+            .map((m) => ({
+              content: String(m.content),
+              type: String(m.type ?? "episodic"),
+              priority: typeof m.priority === "number" ? m.priority : 50,
+              source_message_ids: Array.isArray(m.source_message_ids) ? m.source_message_ids.map(String) : [],
+              metadata: (m.metadata && typeof m.metadata === "object" ? m.metadata : {}) as Record<string, unknown>,
+            }))
+        : [],
+    });
+  }
+  return scenes;
 }
 
 // ============================

@@ -54,7 +54,7 @@ const { buildL2L3Runners } = await import("./extract-l2l3-wiring.js");
 
 function makeCfg(personaModel?: string): import("../../config.js").MemoryTdaiConfig {
   return {
-    llm: { baseUrl: "https://openrouter.ai/api/v1", apiKey: "sk-test", model: "tencent/hy3-preview" },
+    llm: { baseUrl: "https://openrouter.ai/api/v1", apiKey: "sk-test", model: "deepseek/deepseek-v4-flash" },
     persona: {
       triggerEveryN: 50,
       maxScenes: 15,
@@ -85,7 +85,7 @@ describe("buildL2L3Runners (v0.3.3)", () => {
   it("returns bundle with l2Runner, l3Runner, llmRunner fields", () => {
     const bundle = buildL2L3Runners({
       pluginDataDir: "/tmp/x",
-      cfg: makeCfg("tencent/hy3-preview"),
+      cfg: makeCfg("deepseek/deepseek-v4-flash"),
       vectorStore: sentinelStore,
       logger: mockLogger,
     });
@@ -97,7 +97,7 @@ describe("buildL2L3Runners (v0.3.3)", () => {
   it("builds LLM runner with enableTools=true (required for scene/persona file ops)", () => {
     buildL2L3Runners({
       pluginDataDir: "/tmp/x",
-      cfg: makeCfg("tencent/hy3-preview"),
+      cfg: makeCfg("deepseek/deepseek-v4-flash"),
       vectorStore: sentinelStore,
       logger: mockLogger,
     });
@@ -108,7 +108,7 @@ describe("buildL2L3Runners (v0.3.3)", () => {
   it("propagates vectorStore into both L2 and L3 runners", () => {
     buildL2L3Runners({
       pluginDataDir: "/tmp/x",
-      cfg: makeCfg("tencent/hy3-preview"),
+      cfg: makeCfg("deepseek/deepseek-v4-flash"),
       vectorStore: sentinelStore,
       logger: mockLogger,
     });

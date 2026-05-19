@@ -43,7 +43,7 @@ function makeAdapter(projectRoot: string, sessionId?: string) {
     llmConfig: {
       baseUrl: "https://openrouter.ai/api/v1",
       apiKey: "test-key",
-      model: "tencent/hy3-preview",
+      model: "deepseek/deepseek-v4-flash",
     },
     logger: makeLogger(),
   });

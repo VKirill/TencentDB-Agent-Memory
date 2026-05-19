@@ -81,6 +81,13 @@ export interface LLMRunParams {
   workspaceDir?: string;
   /** Plugin instance ID for metric reporting (optional). */
   instanceId?: string;
+  /**
+   * Optional JSON schema for structured output via OpenRouter's
+   * `response_format: { type: "json_schema" }`. When provided,
+   * the runner injects it into providerOptions so the upstream model
+   * is contractually forced to return the specified shape.
+   */
+  responseSchema?: { name: string; strict?: boolean; schema: object };
 }
 
 /**

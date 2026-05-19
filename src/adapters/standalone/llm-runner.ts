@@ -197,10 +197,16 @@ export class StandaloneLLMRunner implements LLMRunner {
       apiKey: this.config.apiKey,
     });
 
-    // Select tools based on mode
+    // Select tools based on mode.
+    // When the caller passes a responseSchema (json_schema mode), the model
+    // must NOT see tool definitions — providers conflict-resolve by drifting
+    // to prose. Tools are only meaningful when we expect multi-step tool
+    // chains (enableTools=true) anyway.
     const tools = this.enableTools
       ? createSandboxedTools(workspaceDir, this.logger)
-      : createReadOnlyTools(workspaceDir, this.logger);
+      : params.responseSchema
+        ? undefined
+        : createReadOnlyTools(workspaceDir, this.logger);
 
     try {
       const result = await generateText({
@@ -211,6 +217,20 @@ export class StandaloneLLMRunner implements LLMRunner {
         stopWhen: stepCountIs(this.enableTools ? MAX_TOOL_ITERATIONS : 1),
         maxOutputTokens: maxTokens,
         abortSignal: AbortSignal.timeout(timeoutMs),
+        providerOptions: {
+          openai: {
+            // OpenRouter-specific: disable reasoning so reasoning-capable models
+            // (e.g. deepseek/deepseek-v4-flash) return content directly instead of
+            // burning the token budget on internal thinking.
+            reasoning: { enabled: false },
+            ...(params.responseSchema && {
+              response_format: {
+                type: "json_schema",
+                json_schema: params.responseSchema,
+              },
+            }),
+          },
+        },
       });
 
       const text = result.text.trim();

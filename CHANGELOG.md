@@ -9,6 +9,79 @@ For the upstream Tencent project history (pre-fork), see
 
 ---
 
+## [0.6.1] — 2026-05-19
+
+### Fixed
+- StandaloneLLMRunner no longer passes the read-only tools array to
+  generateText() when responseSchema is set. With both tools and
+  json_schema present, providers (deepseek-v4-flash on AtlasCloud/SiliconFlow)
+  drift to prose like "Let me read the relevant files…" instead of
+  emitting the schema-shaped JSON. Removing tools in schema mode brings
+  v4-flash to 100% valid JSON output. Live diag confirmed.
+
+## [0.6.0] — 2026-05-19
+
+### Changed (BREAKING — prompt contract)
+- L1 LLM extraction now uses OpenRouter's `response_format: { type:
+  "json_schema" }` with a strict schema that enforces the upstream to
+  return `{"scenes": [...]}` instead of the previous raw `[...]`
+  top-level array. The L1 prompt was updated to match the new wrapper
+  shape; the extractor parses `result.scenes` and falls back to the
+  legacy raw-array shape for backward compat.
+- `EXTRACT_MEMORIES_JSON_SCHEMA` is exported from
+  `src/core/prompts/l1-extraction.ts` and consumed by
+  `StandaloneLLMRunner.run()` via the new optional `responseSchema`
+  parameter on `LLMRunParams`.
+
+### Fixed
+- Eliminates "No JSON array found" parser failures (30-70% of L1 calls
+  in v0.5.7-v0.5.9 returned descriptive prose or single objects).
+  Live A/B test: same model, same prompt, json_schema mode → 100%
+  valid JSON, 4.7s avg, $0.00033 per call.
+
+## [0.5.9] — 2026-05-19
+
+### Reverted
+- Rolled back the `response_format: { type: "json_object" }` flag from v0.5.8.
+  OpenRouter's `json_object` mode forces the upstream to return a single JSON
+  OBJECT (`{...}`), but the L1 extraction parser expects a JSON ARRAY
+  (`[{...}, {...}]`). Live test confirmed: every extract call hit "No JSON
+  array found, starts-with-[ = False". A proper fix needs either an L1
+  prompt rewrite to emit `{"scenes": [...]}` or migration to OpenRouter's
+  `json_schema` mode with a top-level-array schema — deferred to v0.6.x.
+- v0.5.9 restores v0.5.7's working state: `reasoning: { enabled: false }`
+  remains active.
+
+## [0.5.8] — 2026-05-19
+
+### Fixed
+- Added `response_format: { type: "json_object" }` to `providerOptions.openai`
+  in `StandaloneLLMRunner.run()`. After v0.5.7 disabled reasoning, the
+  reasoning-capable `deepseek/deepseek-v4-flash` model started returning
+  descriptive prose instead of strict JSON for 30-70% of L1 extraction
+  calls — the parser then dropped them with "No JSON array found". The new
+  flag forces OpenRouter upstream to shape the response as a JSON-typed
+  string, eliminating prose drift. Live test confirmed 100% JSON content
+  starting with `[`.
+
+## [0.5.7] — 2026-05-19
+
+### Fixed
+- StandaloneLLMRunner.run() now passes `providerOptions.openai.reasoning.enabled=false`
+  to the AI SDK, forwarded verbatim to OpenRouter. Reasoning-capable models (including
+  the default `deepseek/deepseek-v4-flash`) were spending the entire `max_tokens` budget
+  on internal thinking and returning `content: null` — breaking L1 fact extraction
+  silently (every extract call logged "No JSON array found, rawLen=0"). Verified against
+  the live API: same model + same prompt with `reasoning.enabled=false` now returns clean
+  JSON in 5.3s (was 72s, empty content before the fix).
+
+### Changed
+- Test fixtures in `llm-runner.test.ts`, `context.test.ts`, `extract-l2l3-wiring.test.ts`,
+  `host-adapter.test.ts` updated from `tencent/hy3-preview` to `deepseek/deepseek-v4-flash`
+  to match the current production default (set in v0.5.5).
+
+---
+
 ## [0.5.6] — 2026-05-18
 
 ### Fixed

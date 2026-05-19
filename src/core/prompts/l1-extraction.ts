@@ -71,38 +71,90 @@ Combining the background and current scene, extract core info ONLY from the [New
 ---
 
 ### Task 3: Output format spec (JSON)
-Return one and only one valid JSON array. Each element is a scene with its message range and extracted memories:
+Return one and only one valid JSON OBJECT with a single field "scenes",
+whose value is an array. Each element of "scenes" is one scene with its message range and extracted memories:
 
-[
-  {
-    "scene_name": "Generated or inherited scene name",
-    "message_ids": ["IDs of messages belonging to this scene"],
-    "memories": [
-      {
-        "content": "Complete, self-contained memory statement (in the sentence form for its type)",
-        "type": "persona|episodic|instruction",
-        "priority": 80,
-        "source_message_ids": ["msg_id_1", "msg_id_2"],
-        "metadata": {}
-      }
-    ]
-  }
-]
+{
+  "scenes": [
+    {
+      "scene_name": "Generated or inherited scene name",
+      "message_ids": ["IDs of messages belonging to this scene"],
+      "memories": [
+        {
+          "content": "Complete, self-contained memory statement (in the sentence form for its type)",
+          "type": "persona|episodic|instruction",
+          "priority": 80,
+          "source_message_ids": ["msg_id_1", "msg_id_2"],
+          "metadata": {}
+        }
+      ]
+    }
+  ]
+}
 
 **metadata field**:
 - For \`episodic\`: if you can determine activity time, fill \`{"activity_start_time": "ISO8601", "activity_end_time": "ISO8601"}\`.
 - For other types or unknown times: emit an empty object \`{}\`.
 
 If the entire conversation contains no meaningful memory, still output the scene segmentation with an empty \`memories\` array:
-[
-  {
-    "scene_name": "Scene name",
-    "message_ids": ["id1", "id2"],
-    "memories": []
-  }
-]
+{
+  "scenes": [
+    {
+      "scene_name": "Scene name",
+      "message_ids": ["id1", "id2"],
+      "memories": []
+    }
+  ]
+}
 
-Output strictly the JSON array above — no extra Markdown code fences (no \`\`\`json), no explanation text.`;
+Output strictly the JSON object above — no extra Markdown code fences (no \`\`\`json), no explanation text.`;
+
+// ============================
+// JSON Schema for structured output
+// ============================
+
+/**
+ * JSON Schema for OpenRouter response_format: enforces that the L1 extraction
+ * call returns `{"scenes": [...]}` — never raw array, never prose.
+ */
+export const EXTRACT_MEMORIES_JSON_SCHEMA = {
+  name: "l1_scenes",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      scenes: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            scene_name: { type: "string" },
+            message_ids: { type: "array", items: { type: "string" } },
+            memories: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  content: { type: "string" },
+                  type: { type: "string", enum: ["persona", "episodic", "instruction"] },
+                  priority: { type: "number" },
+                  source_message_ids: { type: "array", items: { type: "string" } },
+                  metadata: { type: "object" },
+                },
+                required: ["content", "type", "priority", "source_message_ids", "metadata"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["scene_name", "message_ids", "memories"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["scenes"],
+    additionalProperties: false,
+  },
+} as const;
 
 // ============================
 // Prompt Builder

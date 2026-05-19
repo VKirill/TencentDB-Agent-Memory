@@ -35,7 +35,7 @@ function writeMinimalConfig(projectRoot: string): string {
       llm: {
         enabled: true,
         baseUrl: "https://openrouter.ai/api/v1",
-        model: "tencent/hy3-preview",
+        model: "deepseek/deepseek-v4-flash",
       },
     }),
   );
