@@ -84,9 +84,9 @@ export interface ExtractSummary {
   l0_total: number;
   /**
    * Total L0 input messages the L1 runner considered across all drain
-   * iterations. NOT the count of L1 facts created — Hy3 may decide an
-   * input batch is too thin / too generic to yield individual facts
-   * (returns scene name but 0 memories). For accurate L1-row-count
+   * iterations. NOT the count of L1 facts created — DeepSeek V4 Flash may
+   * return 0 facts on thin batches (input too sparse / too generic to yield
+   * individual facts). For accurate L1-row-count
    * deltas, compare `vectors.db` `l1_records` count before/after.
    */
   l0_processed: number;

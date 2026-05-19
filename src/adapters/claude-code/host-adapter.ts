@@ -21,7 +21,7 @@ const MEMORY_SUBDIR = path.join(".claude", "memory");
 export interface ClaudeCodeHostAdapterOptions {
   /** Project root — typically process.cwd() or $CLAUDE_PROJECT_DIR. */
   projectRoot: string;
-  /** LLM configuration for model calls (OpenRouter Hy3 by default). */
+  /** LLM configuration for model calls (DeepSeek V4 Flash by default). */
   llmConfig: StandaloneLLMConfig;
   /** Logger instance. */
   logger: Logger;

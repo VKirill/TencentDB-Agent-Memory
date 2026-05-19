@@ -55,7 +55,7 @@ export interface L2L3Runners {
  * builds across the per-session L2 loop.
  *
  * Model selection: prefer `cfg.persona.model`, fall back to `cfg.llm.model`
- * (CLI default Hy3). Persona-specific model override allows the operator to
+ * (CLI default DeepSeek V4 Flash). Persona-specific model override allows the operator to
  * swap a cheaper/faster slug for scene+persona work without touching L1.
  *
  * Both runners receive the SAME `vectorStore`/`logger`/`pluginDataDir` as
